@@ -1,0 +1,8 @@
+interface:
+  display_name: "Snowflake"
+  short_description: "Query Snowflake safely with browser SSO"
+  brand_color: "#29B5E8"
+  default_prompt: "Use $snowflake to inspect Snowflake schemas and run a safe read-only query."
+
+policy:
+  allow_implicit_invocation: true
