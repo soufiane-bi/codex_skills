@@ -13,6 +13,19 @@ All scripts are in the skill's `scripts/` folder and require Python 3. The setup
 
 Read `~/.snowflake-skill/config.json` and use the `"python"` key as the Python command. If config does not exist yet, try `python3 --version`, then `python --version`.
 
+Before using a Python for Snowflake, check its TLS backend:
+
+```bash
+PYTHON -c "import ssl, sys; print(sys.executable); print(ssl.OPENSSL_VERSION)"
+```
+
+Prefer Python 3.11+ or 3.12 linked against OpenSSL 3. Apple's CommandLineTools Python can report `LibreSSL 2.8.3`; with the Snowflake connector this may produce `NotOpenSSLWarning`, `bad handshake`, or `certificate verify failed` during external browser SSO even when simple HTTPS requests succeed. If that happens, install or use Homebrew Python:
+
+```bash
+/opt/homebrew/bin/brew install python@3.12
+/opt/homebrew/bin/python3.12 scripts/setup.py
+```
+
 Throughout this document, `PYTHON` means the detected Python command.
 
 ## First-Time Setup
@@ -22,6 +35,8 @@ The setup wizard is interactive and opens a browser for SSO, so ask the user to 
 ```bash
 python3 scripts/setup.py
 ```
+
+In Codex, run the setup in an interactive TTY. Non-interactive execution can fail with `EOFError: EOF when reading a line` at the first prompt.
 
 The wizard asks for:
 
@@ -34,6 +49,33 @@ The wizard asks for:
 - Authenticator, defaulted to `externalbrowser`
 
 It saves non-password connection details to `~/.snowflake-skill/config.json`. It does not store a password.
+
+The setup wizard can also parse a Snowflake config block pasted from Snowsight:
+
+```toml
+[connections.my_example_connection]
+account = "orgname-accountname"
+user = "YOUR_USERNAME"
+authenticator = "externalbrowser"
+role = "ACCOUNTADMIN"
+warehouse = "COMPUTE_WH"
+database = "DEMO_DWH"
+schema = "RETAIL_MART"
+```
+
+To find this in Snowsight, open the account selector, choose **View account details**, then select the **Config File** tab. The local guide is `references/snowflake-account-settings.md`, with a small visual guide at `assets/snowsight-config-file-screen.svg`. This path is based on Snowflake's account identifier documentation.
+
+## Setup Troubleshooting
+
+- If `snowflake-connector-python` is installed during setup and the same run later says `No module named 'snowflake'`, rerun `scripts/setup.py` in a fresh Python process. The setup script now restarts itself after installing the connector to avoid this issue.
+- If setup prints `NotOpenSSLWarning`, `bad handshake`, or `certificate verify failed`, check the Python SSL backend. On macOS, prefer Homebrew Python linked to OpenSSL 3 instead of `/usr/bin/python3` from CommandLineTools.
+- If a plain `requests.get("https://<account>.snowflakecomputing.com")` succeeds but the connector fails, treat it as a connector/runtime compatibility issue first, especially with LibreSSL.
+- If Homebrew commands are run from a sandboxed Codex session and fail writing under `~/Library/Caches/Homebrew`, rerun with elevated permission or ask the user to run the Homebrew command directly.
+- The connector may warn that `keyring` is not installed and cannot cache the id token. This is optional but useful for fewer SSO prompts:
+
+```bash
+PYTHON -m pip install "snowflake-connector-python[secure-local-storage]"
+```
 
 ## Quick Reference
 
