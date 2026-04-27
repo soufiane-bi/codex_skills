@@ -50,6 +50,21 @@ The wizard asks for:
 
 It saves non-password connection details to `~/.snowflake-skill/config.json`. It does not store a password.
 
+The setup wizard can also parse a Snowflake config block pasted from Snowsight:
+
+```toml
+[connections.my_example_connection]
+account = "orgname-accountname"
+user = "YOUR_USERNAME"
+authenticator = "externalbrowser"
+role = "ACCOUNTADMIN"
+warehouse = "COMPUTE_WH"
+database = "DEMO_DWH"
+schema = "RETAIL_MART"
+```
+
+To find this in Snowsight, open the account selector, choose **View account details**, then select the **Config File** tab. The local guide is `references/snowflake-account-settings.md`, with a small visual guide at `assets/snowsight-config-file-screen.svg`. This path is based on Snowflake's account identifier documentation.
+
 ## Setup Troubleshooting
 
 - If `snowflake-connector-python` is installed during setup and the same run later says `No module named 'snowflake'`, rerun `scripts/setup.py` in a fresh Python process. The setup script now restarts itself after installing the connector to avoid this issue.
