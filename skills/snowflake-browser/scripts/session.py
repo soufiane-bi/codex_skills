@@ -2,7 +2,6 @@
 """Prompt for a Snowflake secret and run commands in a temporary session."""
 
 import argparse
-import getpass
 import os
 import shutil
 import subprocess
@@ -11,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.client import apply_ca_bundle, load_config
+from lib.secret_prompt import prompt_snowflake_secret
 
 
 def parse_args():
@@ -30,6 +30,12 @@ def parse_args():
         help="Shell to start when no command is supplied. Defaults to $SHELL, zsh, then sh.",
     )
     parser.add_argument(
+        "--prompt",
+        choices=["auto", "popup", "terminal"],
+        default="auto",
+        help="Secret prompt style. On macOS, auto uses a hidden popup and falls back to terminal.",
+    )
+    parser.add_argument(
         "command",
         nargs=argparse.REMAINDER,
         help="Optional command to run after --, for example: -- python scripts/query.py 'SELECT 1'",
@@ -39,17 +45,6 @@ def parse_args():
 
 def resolve_credential_type(args, config):
     return args.credential_type or config.get("credential_type") or "programmatic_access_token"
-
-
-def prompt_secret(credential_type, user):
-    if not sys.stdin.isatty():
-        raise RuntimeError("Run this from an interactive terminal so the secret can be entered safely.")
-
-    label = "programmatic access token" if credential_type == "programmatic_access_token" else "password"
-    secret = getpass.getpass(f"Snowflake {label} for {user or 'configured user'}: ")
-    if not secret:
-        raise RuntimeError("No secret entered.")
-    return secret
 
 
 def child_environment(config, credential_type, secret):
@@ -89,7 +84,8 @@ def main():
     args = parse_args()
     config = load_config()
     credential_type = resolve_credential_type(args, config)
-    secret = prompt_secret(credential_type, config.get("user"))
+    config["credential_type"] = credential_type
+    secret = prompt_snowflake_secret(config, prompt_method=args.prompt)
     try:
         env = child_environment(config, credential_type, secret)
         return run_child(args, env)

@@ -1,13 +1,14 @@
 """Snowflake connector helpers, config, read-only guard, and query execution."""
 
 import argparse
-import getpass
 import json
 import os
 import re
 import sys
 import time
 from pathlib import Path
+
+from .secret_prompt import prompt_snowflake_secret
 
 CONFIG_DIR = Path.home() / ".snowflake-skill"
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -173,15 +174,18 @@ def resolve_password(config):
             config["_password"] = os.environ[env_name]
             return config["_password"]
 
-    if sys.stdin.isatty():
-        label = "programmatic access token" if credential_type == "programmatic_access_token" else "password"
-        config["_password"] = getpass.getpass(f"Snowflake {label} for {config.get('user')}: ")
+    try:
+        config["_password"] = prompt_snowflake_secret(config)
         return config["_password"]
-
-    env_hint = "SNOWFLAKE_PAT or SNOWFLAKE_PASSWORD" if credential_type == "programmatic_access_token" else "SNOWFLAKE_PASSWORD"
-    raise RuntimeError(
-        f"Snowflake {credential_type} is required. Set {env_hint}, or rerun setup in an interactive terminal."
-    )
+    except RuntimeError as exc:
+        env_hint = (
+            "SNOWFLAKE_PAT or SNOWFLAKE_PASSWORD"
+            if credential_type == "programmatic_access_token"
+            else "SNOWFLAKE_PASSWORD"
+        )
+        raise RuntimeError(
+            f"Snowflake {credential_type} is required. Set {env_hint}, or rerun setup in an interactive terminal."
+        ) from exc
 
 
 def execute_query(sql, config, timeout=120, max_rows=1000):
