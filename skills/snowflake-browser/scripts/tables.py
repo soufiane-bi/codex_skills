@@ -13,20 +13,20 @@ from lib.formatter import format_duration, format_output
 def main():
     parser = argparse.ArgumentParser(description="List Snowflake tables and views")
     add_connection_args(parser)
-    parser.add_argument("--schema", required=True, help="Schema name")
     parser.add_argument("--pattern", help="Optional table/view name pattern")
     parser.add_argument("--include-views", action="store_true", help="Include views as well as base tables")
     args = parser.parse_args()
     config = resolve_config(args)
 
     database = args.database or config.get("database")
-    if not database:
-        print("ERROR: database is required. Pass --database or run setup with a default database.", file=sys.stderr)
+    schema = args.schema or config.get("schema")
+    if not database or not schema:
+        print("ERROR: database and schema are required. Pass --database/--schema or run setup with defaults.", file=sys.stderr)
         sys.exit(1)
 
     table_types = "'BASE TABLE', 'VIEW'" if args.include_views else "'BASE TABLE'"
     filters = [
-        f"table_schema = {sql_literal(args.schema.upper())}",
+        f"table_schema = {sql_literal(schema.upper())}",
         f"table_type IN ({table_types})",
     ]
     if args.pattern:
