@@ -170,11 +170,13 @@ def resolve_password(config):
         env_names = ["SNOWFLAKE_PAT", "SNOWFLAKE_PASSWORD"]
     for env_name in env_names:
         if os.environ.get(env_name):
-            return os.environ[env_name]
+            config["_password"] = os.environ[env_name]
+            return config["_password"]
 
     if sys.stdin.isatty():
         label = "programmatic access token" if credential_type == "programmatic_access_token" else "password"
-        return getpass.getpass(f"Snowflake {label} for {config.get('user')}: ")
+        config["_password"] = getpass.getpass(f"Snowflake {label} for {config.get('user')}: ")
+        return config["_password"]
 
     env_hint = "SNOWFLAKE_PAT or SNOWFLAKE_PASSWORD" if credential_type == "programmatic_access_token" else "SNOWFLAKE_PASSWORD"
     raise RuntimeError(
