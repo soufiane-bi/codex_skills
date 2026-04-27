@@ -30,7 +30,7 @@ Throughout this document, `PYTHON` means the detected Python command.
 
 ## First-Time Setup
 
-The setup wizard is interactive and either prompts for a PAT or opens a browser for SSO, so ask the user to run it in their terminal:
+The setup wizard is interactive and can test the connection after saving non-secret settings, so ask the user to run it in their terminal:
 
 ```bash
 python3 scripts/setup.py
@@ -49,8 +49,23 @@ The wizard asks for:
 - Authentication method: two choices only:
   - `Programmatic access token` — recommended when Snowflake SSO is not enabled
   - `Browser connection` — use only when Snowflake SSO/federated authentication is enabled
+- Whether to test the Snowflake connection now
 
-It saves non-secret connection details to `~/.snowflake-skill/config.json`. It does not store passwords or tokens.
+It saves non-secret connection details to `~/.snowflake-skill/config.json`. It does not store passwords or tokens. If the user agrees to test the connection, PAT/password auth uses a hidden terminal prompt and then reports `CURRENT_USER()`, `CURRENT_ACCOUNT()`, role, warehouse, database, and schema.
+
+For repeated local work without storing a secret, start a temporary terminal session:
+
+```bash
+PYTHON scripts/session.py
+```
+
+Paste the PAT into the hidden prompt. The helper starts a child shell with `SNOWFLAKE_PAT` set only for that shell and its child commands. Type `exit` when finished and the token is gone from the session. This is the preferred local workflow when the user does not want Keychain storage.
+
+To run a single command through the same hidden prompt:
+
+```bash
+PYTHON scripts/session.py -- PYTHON scripts/query.py "SELECT CURRENT_USER()"
+```
 
 For non-interactive use, provide a fresh secret through the environment:
 
@@ -116,6 +131,7 @@ PYTHON -m pip install "snowflake-connector-python[secure-local-storage]"
 | Get DDL | `ddl.py` | `--type=table|view --schema=NAME --name=NAME` |
 | Search objects | `search.py` | `--pattern=TEXT [--database=NAME]` |
 | Profile table | `profile_table.py` | `--schema=NAME --table=NAME [--grain=COL1,COL2]` |
+| Temporary PAT session | `session.py` | `[--credential-type=programmatic_access_token|password] [-- COMMAND ...]` |
 
 Common options:
 

@@ -182,6 +182,7 @@ def print_pat_guidance():
     print("  Programmatic access token guidance:")
     print("  - Use a fresh token and rotate any token that was pasted into chat, logs, or tickets.")
     print("  - The token is entered at a hidden prompt and is not saved to config.")
+    print("  - For repeated commands, run scripts/session.py and paste the token once per terminal session.")
     print("  - If Snowsight shows 'Missing network policy', enable the approved temporary")
     print("    network-policy bypass for the token or ask an admin to attach a network policy.")
 
@@ -446,6 +447,26 @@ def maybe_retry_with_keychain_ca(exc, config):
     return True
 
 
+def wants_connection_test():
+    print()
+    choice = prompt("Test Snowflake connection now? (Y/n)", "Y", required=False).lower()
+    return choice in {"", "y", "yes"}
+
+
+def print_connection_test_intro(config):
+    if config.get("authenticator") == "externalbrowser":
+        print("  A browser window may open. Complete SSO there, then return to this terminal.")
+        return
+
+    credential_type = config.get("credential_type", "programmatic_access_token")
+    if credential_type == "programmatic_access_token":
+        print("  Paste your Snowflake PAT into the hidden terminal prompt.")
+        print("  The token is used only for this connection test and is not saved.")
+    else:
+        print("  Enter your Snowflake password into the hidden terminal prompt.")
+        print("  The password is used only for this connection test and is not saved.")
+
+
 def test_connection(config):
     connection = connect(config)
     try:
@@ -486,12 +507,19 @@ def main():
     existing = load_existing_config()
     config = collect_connection_config(existing)
 
+    save_config(config)
     print()
-    print("Step 2: Testing connection")
-    if config.get("authenticator") == "externalbrowser":
-        print("A browser window may open. Complete SSO there, then return to this terminal.")
-    else:
-        print("Enter your Snowflake password or programmatic access token if prompted.")
+    print(f"Saved config to {CONFIG_FILE}")
+
+    print()
+    print("Step 2: Optional connection test")
+    if not wants_connection_test():
+        print()
+        print("Connection test skipped.")
+        print("Setup complete.")
+        return
+
+    print_connection_test_intro(config)
     try:
         result = test_connection(config)
     except Exception as exc:
@@ -509,9 +537,7 @@ def main():
     for key, value in result.items():
         print(f"    {key}: {value}")
 
-    save_config(config)
     print()
-    print(f"Saved config to {CONFIG_FILE}")
     print("Setup complete.")
 
 
