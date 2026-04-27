@@ -3,7 +3,6 @@
 
 import json
 import os
-import re
 import shutil
 import ssl
 import subprocess
@@ -41,94 +40,6 @@ def load_existing_config():
     if CONFIG_FILE.exists():
         return json.loads(CONFIG_FILE.read_text())
     return {}
-
-
-def print_settings_help():
-    print()
-    print("  [info] Need help finding these Snowflake settings?")
-    print("  In Snowsight:")
-    print("    1. Select the account selector for your signed-in account.")
-    print("    2. Select View account details.")
-    print("    3. Open the Config File tab.")
-    print("    4. Fill in warehouse, database, schema, and role if needed.")
-    print("    5. Copy the generated [connections.<name>] block and paste it here.")
-    print()
-    print(f"  Snowflake docs: {SNOWFLAKE_ACCOUNT_DOCS_URL}")
-    if SETTINGS_GUIDE.exists():
-        print(f"  Local guide: {SETTINGS_GUIDE}")
-    if SETTINGS_VISUAL.exists():
-        print(f"  Visual guide: {SETTINGS_VISUAL}")
-    print()
-    print("  Tip: type ? at any connection prompt to show this help again.")
-    print()
-
-
-def parse_config_block(text):
-    config = {}
-    for line in text.splitlines():
-        match = re.match(r'\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"(.*)"\s*$', line)
-        if not match:
-            continue
-        key, value = match.groups()
-        key = key.lower()
-        if key in CONFIG_KEYS:
-            config[key] = value.replace('\\"', '"')
-    return config
-
-
-def read_pasted_config_block():
-    print()
-    print("  Paste the Snowflake [connections.<name>] config block.")
-    print("  Press Enter on a blank line when finished.")
-    lines = []
-    while True:
-        line = input()
-        if not line.strip():
-            break
-        lines.append(line)
-    parsed = parse_config_block("\n".join(lines))
-    if parsed:
-        found = ", ".join(sorted(parsed))
-        print(f"  Parsed settings: {found}")
-    else:
-        print("  No connection settings found in pasted block; continuing with manual prompts.")
-    return parsed
-
-
-def collect_connection_config(existing):
-    print_settings_help()
-    paste_choice = prompt(
-        "Paste Snowflake config block now? (y/N)",
-        "N",
-        required=False,
-        help_callback=print_settings_help,
-    ).lower()
-    pasted = read_pasted_config_block() if paste_choice in {"y", "yes"} else {}
-    defaults = {**existing, **pasted}
-    return {
-        "python": sys.executable,
-        "account": prompt("Snowflake account identifier", defaults.get("account"), help_callback=print_settings_help),
-        "user": prompt("Username/email", defaults.get("user"), help_callback=print_settings_help),
-        "warehouse": prompt(
-            "Default warehouse",
-            defaults.get("warehouse"),
-            required=False,
-            help_callback=print_settings_help,
-        ),
-        "database": prompt(
-            "Default database",
-            defaults.get("database"),
-            required=False,
-            help_callback=print_settings_help,
-        ),
-        "schema": prompt("Default schema", defaults.get("schema"), required=False, help_callback=print_settings_help),
-        "role": prompt("Default role", defaults.get("role"), required=False, help_callback=print_settings_help),
-        "authenticator": prompt(
-            "Authenticator",
-            defaults.get("authenticator", "externalbrowser"),
-            help_callback=print_settings_help,
-        ),
-    }
 
 
 def python_runtime_notes():
