@@ -275,7 +275,16 @@ def ensure_connector():
 def connection_failure_help(exc):
     text = str(exc).lower()
     print(f"  ERROR: Connection test failed: {exc}")
-    if any(marker in text for marker in ["certificate verify failed", "bad handshake", "notopensslwarning"]):
+    if "390190" in text or "saml identity provider account parameter" in text:
+        print()
+        print("  Troubleshooting:")
+        print("  - Python, connector installation, and TLS reached Snowflake successfully.")
+        print("  - Snowflake rejected the browser SSO flow because the IdP account URL/configuration does not match.")
+        print("  - Re-copy the account identifier from Snowsight > View account details > Config File.")
+        print("  - If the account URL includes a region, cloud, or privatelink suffix, include it in the account identifier.")
+        print("  - Ask a Snowflake admin to verify the SAML integration issuer/ACS URL or legacy")
+        print("    SAML_IDENTITY_PROVIDER account parameter matches the account URL used by the connector.")
+    elif any(marker in text for marker in ["certificate verify failed", "bad handshake", "notopensslwarning"]):
         print()
         print("  Troubleshooting:")
         print("  - If this Python reports LibreSSL above, rerun setup with Homebrew Python 3.11+ or 3.12.")
