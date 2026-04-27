@@ -133,33 +133,57 @@ def collect_connection_config(existing):
 
 
 def default_auth_method(defaults):
-    credential_type = defaults.get("credential_type")
-    if credential_type in {"programmatic_access_token", "password"}:
-        return credential_type
+    if (defaults.get("authenticator") or "").lower() == "externalbrowser":
+        return "externalbrowser"
     return "programmatic_access_token"
 
 
 def prompt_auth_method(defaults):
-    choices = {"programmatic_access_token", "password", "externalbrowser"}
+    choices = {"programmatic_access_token", "externalbrowser"}
     default = default_auth_method(defaults)
+    default_choice = "2" if default == "externalbrowser" else "1"
+    print()
+    print("  Choose Snowflake authentication:")
+    print("    1. Programmatic access token (recommended when SSO is not enabled)")
+    print("    2. Browser connection (SSO/federated auth only)")
     while True:
         value = prompt(
-            "Authentication method (programmatic_access_token/password/externalbrowser)",
-            default,
+            "Authentication method (1=PAT, 2=Browser SSO)",
+            default_choice,
             help_callback=print_settings_help,
         ).lower()
         aliases = {
+            "1": "programmatic_access_token",
             "pat": "programmatic_access_token",
             "token": "programmatic_access_token",
             "programmatic-access-token": "programmatic_access_token",
-            "user_password": "password",
-            "username_password": "password",
+            "programmatic_access_token": "programmatic_access_token",
+            "2": "externalbrowser",
+            "browser": "externalbrowser",
+            "browser_sso": "externalbrowser",
+            "browser-sso": "externalbrowser",
+            "externalbrowser": "externalbrowser",
             "sso": "externalbrowser",
         }
         value = aliases.get(value, value)
         if value in choices:
+            if value == "programmatic_access_token":
+                print_pat_guidance()
+            else:
+                print()
+                print("  Browser connection requires Snowflake SSO/federated authentication.")
+                print("  If your account uses username/password instead, choose PAT.")
             return value
-        print("  ERROR: Choose programmatic_access_token, password, or externalbrowser")
+        print("  ERROR: Choose 1 for PAT or 2 for Browser SSO")
+
+
+def print_pat_guidance():
+    print()
+    print("  Programmatic access token guidance:")
+    print("  - Use a fresh token and rotate any token that was pasted into chat, logs, or tickets.")
+    print("  - The token is entered at a hidden prompt and is not saved to config.")
+    print("  - If Snowsight shows 'Missing network policy', enable the approved temporary")
+    print("    network-policy bypass for the token or ask an admin to attach a network policy.")
 
 
 def authentication_config(auth_method):
@@ -311,7 +335,15 @@ def ensure_connector():
 def connection_failure_help(exc):
     text = str(exc).lower()
     print(f"  ERROR: Connection test failed: {exc}")
-    if "pat_invalid" in text:
+    if "network policy is required" in text:
+        print()
+        print("  Troubleshooting:")
+        print("  - Snowflake reached the account and recognised this as PAT authentication.")
+        print("  - Programmatic access tokens require an active network policy for the user or account.")
+        print("  - Ask a Snowflake admin to attach a network policy that allows your current network,")
+        print("    or regenerate the token with an approved temporary network-policy bypass if allowed.")
+        print("  - If you need to connect immediately, use password authentication instead of PAT.")
+    elif "pat_invalid" in text:
         print()
         print("  Troubleshooting:")
         print("  - The programmatic access token was rejected by Snowflake.")
