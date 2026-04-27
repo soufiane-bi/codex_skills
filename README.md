@@ -13,14 +13,14 @@ Install from GitHub:
 ```bash
 python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
   --repo soufiane-bi/codex_skills \
-  --path skills/snowflake-browser
+  --path skills/snowflake
 ```
 
 Or install from a GitHub URL:
 
 ```bash
 python3 ~/.codex/skills/.system/skill-installer/scripts/install-skill-from-github.py \
-  --url https://github.com/soufiane-bi/codex_skills/tree/main/skills/snowflake-browser
+  --url https://github.com/soufiane-bi/codex_skills/tree/main/skills/snowflake
 ```
 
 After installing, restart Codex so the new skill appears in the available skills list.
@@ -28,7 +28,7 @@ After installing, restart Codex so the new skill appears in the available skills
 First-time setup:
 
 ```bash
-cd ~/.codex/skills/snowflake-browser
+cd ~/.codex/skills/snowflake
 python3 scripts/setup.py
 ```
 
@@ -50,7 +50,7 @@ No password or PAT is stored in config. On macOS, PAT/password prompts use a hid
 For repeated commands in one terminal session:
 
 ```bash
-cd ~/.codex/skills/snowflake-browser
+cd ~/.codex/skills/snowflake
 python3 scripts/session.py
 ```
 
