@@ -12,15 +12,27 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.client import CONFIG_FILE, save_config
 
+SKILL_DIR = Path(__file__).resolve().parent.parent
+SETTINGS_GUIDE = SKILL_DIR / "references" / "snowflake-account-settings.md"
+SETTINGS_VISUAL = SKILL_DIR / "assets" / "snowsight-config-file-screen.svg"
+SNOWFLAKE_ACCOUNT_DOCS_URL = (
+    "https://docs.snowflake.com/en/user-guide/admin-account-identifier"
+    "#finding-the-organization-and-account-name-for-an-account"
+)
+CONFIG_KEYS = {"account", "user", "warehouse", "database", "schema", "role", "authenticator"}
 
-def prompt(message, default=None, required=True):
+
+def prompt(message, default=None, required=True, help_callback=None):
     if default:
         value = input(f"  {message} [{default}]: ").strip() or default
     else:
         value = input(f"  {message}: ").strip()
+    if value == "?" and help_callback:
+        help_callback()
+        return prompt(message, default, required, help_callback)
     if required and not value:
         print(f"  ERROR: {message} is required")
-        return prompt(message, default, required)
+        return prompt(message, default, required, help_callback)
     return value
 
 
@@ -146,16 +158,7 @@ def main():
     print()
 
     existing = load_existing_config()
-    config = {
-        "python": sys.executable,
-        "account": prompt("Snowflake account identifier", existing.get("account")),
-        "user": prompt("Username/email", existing.get("user")),
-        "warehouse": prompt("Default warehouse", existing.get("warehouse"), required=False),
-        "database": prompt("Default database", existing.get("database"), required=False),
-        "schema": prompt("Default schema", existing.get("schema"), required=False),
-        "role": prompt("Default role", existing.get("role"), required=False),
-        "authenticator": prompt("Authenticator", existing.get("authenticator", "externalbrowser")),
-    }
+    config = collect_connection_config(existing)
 
     print()
     print("Step 2: Testing connection")
