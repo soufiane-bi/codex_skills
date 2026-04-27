@@ -1,6 +1,7 @@
 """Snowflake connector helpers, config, read-only guard, and query execution."""
 
 import argparse
+import getpass
 import json
 import os
 import re
@@ -44,7 +45,16 @@ def load_config():
 
 def save_config(config):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+    CONFIG_FILE.write_text(json.dumps(sanitized_config(config), indent=2) + "\n")
+
+
+def sanitized_config(config):
+    blocked_keys = {"password", "token", "pat", "programmatic_access_token"}
+    return {
+        key: value
+        for key, value in config.items()
+        if key not in blocked_keys and not key.startswith("_")
+    }
 
 
 def apply_ca_bundle(config):
@@ -65,7 +75,12 @@ def add_connection_args(parser):
     parser.add_argument("--database", help="Snowflake database")
     parser.add_argument("--schema", help="Snowflake schema")
     parser.add_argument("--role", help="Snowflake role")
-    parser.add_argument("--authenticator", help="Authenticator, default externalbrowser")
+    parser.add_argument("--authenticator", help="Authenticator, default snowflake for username/password or PAT")
+    parser.add_argument(
+        "--credential-type",
+        choices=["programmatic_access_token", "password"],
+        help="Credential prompt/env-var type for username/password auth",
+    )
     parser.add_argument("--format", choices=["txt", "csv", "json"], default="txt", help="Terminal output format")
     parser.add_argument("--save-format", dest="save_format", choices=["txt", "csv", "json"], default="csv")
     parser.add_argument("--timeout", type=int, default=120, help="Query timeout seconds")
@@ -77,12 +92,12 @@ def add_connection_args(parser):
 
 def resolve_config(args):
     config = load_config()
-    for key in ["account", "user", "warehouse", "database", "schema", "role", "authenticator"]:
+    for key in ["account", "user", "warehouse", "database", "schema", "role", "authenticator", "credential_type"]:
         value = getattr(args, key, None)
         if value:
             config[key] = value
 
-    config.setdefault("authenticator", "externalbrowser")
+    config.setdefault("authenticator", "snowflake")
     missing = [key for key in ["account", "user"] if not config.get(key)]
     if missing:
         print(f"ERROR: Missing connection parameter(s): {', '.join(missing)}", file=sys.stderr)
@@ -122,15 +137,49 @@ def connect(config):
             "snowflake-connector-python is not installed. Run scripts/setup.py first."
         ) from exc
 
+    authenticator = (config.get("authenticator") or "snowflake").lower()
     kwargs = {
         "account": config.get("account"),
         "user": config.get("user"),
-        "authenticator": config.get("authenticator", "externalbrowser"),
     }
+    if password_authenticator(config):
+        kwargs["password"] = resolve_password(config)
+        if authenticator not in {"snowflake", "password", "programmatic_access_token"}:
+            kwargs["authenticator"] = authenticator
+    else:
+        kwargs["authenticator"] = authenticator
     for key in ["warehouse", "database", "schema", "role"]:
         if config.get(key):
             kwargs[key] = config[key]
     return snowflake.connector.connect(**kwargs)
+
+
+def password_authenticator(config):
+    authenticator = (config.get("authenticator") or "snowflake").lower()
+    return authenticator in {"snowflake", "password", "programmatic_access_token", "username_password_mfa"}
+
+
+def resolve_password(config):
+    for key in ["_password", "password", "_token", "token", "pat", "programmatic_access_token"]:
+        if config.get(key):
+            return config[key]
+
+    credential_type = config.get("credential_type", "programmatic_access_token")
+    env_names = ["SNOWFLAKE_PASSWORD"]
+    if credential_type == "programmatic_access_token":
+        env_names = ["SNOWFLAKE_PAT", "SNOWFLAKE_PASSWORD"]
+    for env_name in env_names:
+        if os.environ.get(env_name):
+            return os.environ[env_name]
+
+    if sys.stdin.isatty():
+        label = "programmatic access token" if credential_type == "programmatic_access_token" else "password"
+        return getpass.getpass(f"Snowflake {label} for {config.get('user')}: ")
+
+    env_hint = "SNOWFLAKE_PAT or SNOWFLAKE_PASSWORD" if credential_type == "programmatic_access_token" else "SNOWFLAKE_PASSWORD"
+    raise RuntimeError(
+        f"Snowflake {credential_type} is required. Set {env_hint}, or rerun setup in an interactive terminal."
+    )
 
 
 def execute_query(sql, config, timeout=120, max_rows=1000):
