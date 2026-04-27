@@ -4,9 +4,9 @@ Shared Codex skills.
 
 ## Available Skills
 
-### Snowflake Browser
+### Snowflake
 
-Read-only Snowflake querying and metadata exploration using browser SSO authentication.
+Read-only Snowflake querying, metadata exploration, table profiling, and validation using either programmatic access token (PAT) authentication or browser SSO.
 
 Install from GitHub:
 
@@ -40,6 +40,18 @@ The setup wizard asks for:
 - Default database
 - Default schema
 - Default role
-- Authenticator, default `externalbrowser`
+- Authentication method:
+  - Programmatic access token, recommended when SSO is not enabled
+  - Browser connection, for Snowflake SSO/federated authentication only
+- Whether to test the connection now
 
-No password is stored. Browser SSO is used for authentication.
+No password or PAT is stored in config. On macOS, PAT/password prompts use a hidden popup by default and fall back to a hidden terminal prompt when needed. The popup explains that the PAT is only saved for the current session and is not written to config or Keychain.
+
+For repeated commands in one terminal session:
+
+```bash
+cd ~/.codex/skills/snowflake-browser
+python3 scripts/session.py
+```
+
+Paste the PAT into the popup once. Commands launched from that temporary shell can use Snowflake until the shell is closed.
