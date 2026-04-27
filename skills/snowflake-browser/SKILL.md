@@ -1,11 +1,11 @@
 ---
 name: snowflake
-description: Query Snowflake safely using browser SSO authentication. Use whenever the user mentions Snowflake, Snowflake SQL, warehouse/database/schema exploration, table metadata, DDL, sample data, query execution, or business analysis backed by Snowflake. Always use this skill for Snowflake-related tasks and enforce read-only SQL guardrails.
+description: Query Snowflake safely using username/password, programmatic access token, or browser SSO authentication. Use whenever the user mentions Snowflake, Snowflake SQL, warehouse/database/schema exploration, table metadata, DDL, sample data, query execution, or business analysis backed by Snowflake. Always use this skill for Snowflake-related tasks and enforce read-only SQL guardrails.
 ---
 
 # Snowflake Skill
 
-Read-only Snowflake exploration and business analysis using the Snowflake Python connector with browser authentication (`externalbrowser`).
+Read-only Snowflake exploration and business analysis using the Snowflake Python connector with username/password, programmatic access token (PAT), or browser SSO authentication.
 
 All scripts are in the skill's `scripts/` folder and require Python 3. The setup wizard installs `snowflake-connector-python` if it is missing.
 
@@ -30,7 +30,7 @@ Throughout this document, `PYTHON` means the detected Python command.
 
 ## First-Time Setup
 
-The setup wizard is interactive and opens a browser for SSO, so ask the user to run it in their terminal:
+The setup wizard is interactive and may prompt for a password/PAT or open a browser for SSO, so ask the user to run it in their terminal:
 
 ```bash
 python3 scripts/setup.py
@@ -46,9 +46,19 @@ The wizard asks for:
 - Default database
 - Default schema
 - Default role
-- Authenticator, defaulted to `externalbrowser`
+- Authentication method: `programmatic_access_token` (recommended), `password`, or `externalbrowser`
 
-It saves non-password connection details to `~/.snowflake-skill/config.json`. It does not store a password.
+It saves non-secret connection details to `~/.snowflake-skill/config.json`. It does not store passwords or tokens.
+
+For non-interactive use, provide a fresh secret through the environment:
+
+```bash
+export SNOWFLAKE_PAT="..."
+# or, for password auth:
+export SNOWFLAKE_PASSWORD="..."
+```
+
+Programmatic access tokens are used as the Snowflake connector `password` value. They are safer than a real password for local automation because they can be rotated, revoked, and role-restricted. If a user pastes a token into chat or logs, tell them to rotate it and use a fresh token.
 
 On Homebrew Python, setup handles PEP 668's externally-managed Python restriction by installing
 `snowflake-connector-python` into the user package directory with `--user --break-system-packages`.
@@ -81,6 +91,7 @@ PYTHON -m pip install --user --break-system-packages snowflake-connector-python
 ```
 
 - If the connector fails with `certificate verify failed` on a corporate network, check whether the server certificate is issued by a local proxy such as Cisco Secure Access. Setup can create `~/.snowflake-skill/cacert.pem` from certifi plus matching macOS Keychain certificates and saves it as `ca_bundle` in config; all Snowflake scripts then set `REQUESTS_CA_BUNDLE` and `SSL_CERT_FILE` automatically.
+- If PAT auth fails with `PAT_INVALID`, generate a fresh token, make sure it belongs to the configured user, check role restrictions, and confirm Snowflake authentication/network policies allow `PROGRAMMATIC_ACCESS_TOKEN`.
 - If TLS succeeds but Snowflake returns `390190` mentioning the SAML Identity Provider account parameter, local setup has moved past Python/TLS. Verify the exact Snowflake account identifier from Snowsight, including any region/cloud or `privatelink` suffix in the account URL, and confirm the IdP/SAML issuer/ACS URL or legacy `SAML_IDENTITY_PROVIDER` account parameter matches that account URL; this can require a Snowflake admin-side fix.
 - If a plain `requests.get("https://<account>.snowflakecomputing.com")` succeeds but the connector fails, treat it as a connector/runtime compatibility issue first, especially with LibreSSL.
 - If Homebrew commands are run from a sandboxed Codex session and fail writing under `~/Library/Caches/Homebrew`, rerun with elevated permission or ask the user to run the Homebrew command directly.
@@ -112,6 +123,8 @@ Common options:
 | `--database` | Override default database |
 | `--schema` | Override default schema |
 | `--role` | Override default role |
+| `--authenticator` | Override authenticator, default `snowflake`; use `externalbrowser` only for SSO |
+| `--credential-type=programmatic_access_token|password` | Secret type used for username/password authentication |
 | `--format=txt|csv|json` | Terminal display format, default `txt` |
 | `--save-format=txt|csv|json` | Saved file format, default `csv` |
 | `--save=PATH` | Save results to a specific path |

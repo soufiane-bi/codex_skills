@@ -12,7 +12,7 @@ import sysconfig
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.client import CONFIG_DIR, CONFIG_FILE, apply_ca_bundle, save_config
+from lib.client import CONFIG_DIR, CONFIG_FILE, apply_ca_bundle, connect, save_config
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 SETTINGS_GUIDE = SKILL_DIR / "references" / "snowflake-account-settings.md"
@@ -21,7 +21,7 @@ SNOWFLAKE_ACCOUNT_DOCS_URL = (
     "https://docs.snowflake.com/en/user-guide/admin-account-identifier"
     "#finding-the-organization-and-account-name-for-an-account"
 )
-CONFIG_KEYS = {"account", "user", "warehouse", "database", "schema", "role", "authenticator"}
+CONFIG_KEYS = {"account", "user", "warehouse", "database", "schema", "role", "authenticator", "credential_type"}
 
 
 def prompt(message, default=None, required=True, help_callback=None):
@@ -106,6 +106,7 @@ def collect_connection_config(existing):
     ).lower()
     pasted = read_pasted_config_block() if paste_choice in {"y", "yes"} else {}
     defaults = {**existing, **pasted}
+    auth_method = prompt_auth_method(defaults)
     config = {
         "python": sys.executable,
         "account": prompt("Snowflake account identifier", defaults.get("account"), help_callback=print_settings_help),
@@ -124,15 +125,50 @@ def collect_connection_config(existing):
         ),
         "schema": prompt("Default schema", defaults.get("schema"), required=False, help_callback=print_settings_help),
         "role": prompt("Default role", defaults.get("role"), required=False, help_callback=print_settings_help),
-        "authenticator": prompt(
-            "Authenticator",
-            defaults.get("authenticator", "externalbrowser"),
-            help_callback=print_settings_help,
-        ),
     }
+    config.update(authentication_config(auth_method))
     if defaults.get("ca_bundle"):
         config["ca_bundle"] = defaults["ca_bundle"]
     return config
+
+
+def default_auth_method(defaults):
+    credential_type = defaults.get("credential_type")
+    if credential_type in {"programmatic_access_token", "password"}:
+        return credential_type
+    return "programmatic_access_token"
+
+
+def prompt_auth_method(defaults):
+    choices = {"programmatic_access_token", "password", "externalbrowser"}
+    default = default_auth_method(defaults)
+    while True:
+        value = prompt(
+            "Authentication method (programmatic_access_token/password/externalbrowser)",
+            default,
+            help_callback=print_settings_help,
+        ).lower()
+        aliases = {
+            "pat": "programmatic_access_token",
+            "token": "programmatic_access_token",
+            "programmatic-access-token": "programmatic_access_token",
+            "user_password": "password",
+            "username_password": "password",
+            "sso": "externalbrowser",
+        }
+        value = aliases.get(value, value)
+        if value in choices:
+            return value
+        print("  ERROR: Choose programmatic_access_token, password, or externalbrowser")
+
+
+def authentication_config(auth_method):
+    if auth_method == "externalbrowser":
+        return {"authenticator": "externalbrowser"}
+    return {
+        "authenticator": "snowflake",
+        "credential_type": auth_method,
+    }
 
 
 def python_runtime_notes():
@@ -275,7 +311,14 @@ def ensure_connector():
 def connection_failure_help(exc):
     text = str(exc).lower()
     print(f"  ERROR: Connection test failed: {exc}")
-    if "390190" in text or "saml identity provider account parameter" in text:
+    if "pat_invalid" in text:
+        print()
+        print("  Troubleshooting:")
+        print("  - The programmatic access token was rejected by Snowflake.")
+        print("  - Generate a fresh token, make sure it belongs to this user, and check any role restriction.")
+        print("  - If your account enforces authentication policies, PROGRAMMATIC_ACCESS_TOKEN must be allowed.")
+        print("  - If your account enforces network policies, your current network must be allowed for PAT use.")
+    elif "390190" in text or "saml identity provider account parameter" in text:
         print()
         print("  Troubleshooting:")
         print("  - Python, connector installation, and TLS reached Snowflake successfully.")
@@ -372,19 +415,7 @@ def maybe_retry_with_keychain_ca(exc, config):
 
 
 def test_connection(config):
-    apply_ca_bundle(config)
-    import snowflake.connector
-
-    kwargs = {
-        "account": config["account"],
-        "user": config["user"],
-        "authenticator": config["authenticator"],
-    }
-    for key in ["warehouse", "database", "schema", "role"]:
-        if config.get(key):
-            kwargs[key] = config[key]
-
-    connection = snowflake.connector.connect(**kwargs)
+    connection = connect(config)
     try:
         cursor = connection.cursor()
         try:
@@ -412,7 +443,7 @@ def main():
     print("  Snowflake Skill Setup")
     print("=" * 44)
     print()
-    print("This setup uses browser SSO and stores no password.")
+    print("This setup stores connection settings, but never stores passwords or tokens.")
     print()
 
     print("Step 1: Checking Python dependency")
@@ -425,7 +456,10 @@ def main():
 
     print()
     print("Step 2: Testing connection")
-    print("A browser window may open. Complete SSO there, then return to this terminal.")
+    if config.get("authenticator") == "externalbrowser":
+        print("A browser window may open. Complete SSO there, then return to this terminal.")
+    else:
+        print("Enter your Snowflake password or programmatic access token if prompted.")
     try:
         result = test_connection(config)
     except Exception as exc:
