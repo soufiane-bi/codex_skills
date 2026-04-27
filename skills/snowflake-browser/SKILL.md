@@ -51,7 +51,9 @@ The wizard asks for:
   - `Browser connection` — use only when Snowflake SSO/federated authentication is enabled
 - Whether to test the Snowflake connection now
 
-It saves non-secret connection details to `~/.snowflake-skill/config.json`. It does not store passwords or tokens. If the user agrees to test the connection, PAT/password auth uses a hidden terminal prompt and then reports `CURRENT_USER()`, `CURRENT_ACCOUNT()`, role, warehouse, database, and schema.
+It saves non-secret connection details to `~/.snowflake-skill/config.json`. It does not store passwords or tokens. If the user agrees to test the connection, PAT/password auth uses a hidden macOS popup, with terminal fallback, and then reports `CURRENT_USER()`, `CURRENT_ACCOUNT()`, role, warehouse, database, and schema.
+
+All PAT/password prompts are session-only. The popup tells the user: "This PAT is only saved for this session; it is not written to config or Keychain."
 
 For repeated local work without storing a secret, start a temporary terminal session:
 
@@ -60,6 +62,8 @@ PYTHON scripts/session.py
 ```
 
 Paste the PAT into the hidden prompt. The helper starts a child shell with `SNOWFLAKE_PAT` set only for that shell and its child commands. Type `exit` when finished and the token is gone from the session. This is the preferred local workflow when the user does not want Keychain storage.
+
+On macOS, `session.py` opens a hidden-input popup by default. Use `--prompt=terminal` only when a terminal prompt is preferred.
 
 To run a single command through the same hidden prompt:
 
@@ -131,7 +135,7 @@ PYTHON -m pip install "snowflake-connector-python[secure-local-storage]"
 | Get DDL | `ddl.py` | `--type=table|view --schema=NAME --name=NAME` |
 | Search objects | `search.py` | `--pattern=TEXT [--database=NAME]` |
 | Profile table | `profile_table.py` | `--schema=NAME --table=NAME [--grain=COL1,COL2]` |
-| Temporary PAT session | `session.py` | `[--credential-type=programmatic_access_token|password] [-- COMMAND ...]` |
+| Temporary PAT session | `session.py` | `[--credential-type=programmatic_access_token|password] [--prompt=auto|popup|terminal] [-- COMMAND ...]` |
 
 Common options:
 

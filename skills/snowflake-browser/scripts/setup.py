@@ -181,8 +181,8 @@ def print_pat_guidance():
     print()
     print("  Programmatic access token guidance:")
     print("  - Use a fresh token and rotate any token that was pasted into chat, logs, or tickets.")
-    print("  - The token is entered at a hidden prompt and is not saved to config.")
-    print("  - For repeated commands, run scripts/session.py and paste the token once per terminal session.")
+    print("  - The token is entered in a hidden popup on macOS and is not saved to config.")
+    print("  - For repeated commands, run scripts/session.py and paste the token once per session.")
     print("  - If Snowsight shows 'Missing network policy', enable the approved temporary")
     print("    network-policy bypass for the token or ask an admin to attach a network policy.")
 
@@ -460,11 +460,11 @@ def print_connection_test_intro(config):
 
     credential_type = config.get("credential_type", "programmatic_access_token")
     if credential_type == "programmatic_access_token":
-        print("  Paste your Snowflake PAT into the hidden terminal prompt.")
-        print("  The token is used only for this connection test and is not saved.")
+        print("  Paste your Snowflake PAT into the hidden popup.")
+        print("  This PAT is only saved for this session; it is not written to config or Keychain.")
     else:
-        print("  Enter your Snowflake password into the hidden terminal prompt.")
-        print("  The password is used only for this connection test and is not saved.")
+        print("  Enter your Snowflake password into the hidden popup or terminal prompt.")
+        print("  The password is used only for this session and is not saved.")
 
 
 def test_connection(config):
