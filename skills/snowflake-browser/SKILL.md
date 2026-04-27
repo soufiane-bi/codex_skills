@@ -50,6 +50,10 @@ The wizard asks for:
 
 It saves non-password connection details to `~/.snowflake-skill/config.json`. It does not store a password.
 
+On Homebrew Python, setup handles PEP 668's externally-managed Python restriction by installing
+`snowflake-connector-python` into the user package directory with `--user --break-system-packages`.
+No virtual environment is required for the default setup.
+
 The setup wizard can also parse a Snowflake config block pasted from Snowsight:
 
 ```toml
@@ -69,6 +73,15 @@ To find this in Snowsight, open the account selector, choose **View account deta
 
 - If `snowflake-connector-python` is installed during setup and the same run later says `No module named 'snowflake'`, rerun `scripts/setup.py` in a fresh Python process. The setup script now restarts itself after installing the connector to avoid this issue.
 - If setup prints `NotOpenSSLWarning`, `bad handshake`, or `certificate verify failed`, check the Python SSL backend. On macOS, prefer Homebrew Python linked to OpenSSL 3 instead of `/usr/bin/python3` from CommandLineTools.
+- If Homebrew Python fails with `Symbol not found: _XML_SetAllocTrackerActivationThreshold` while importing `pyexpat`, setup detects this before pip runs and can apply the local fix: relink `pyexpat` to Homebrew's `expat` library, then re-sign the extension with `codesign --force --sign -`.
+- If pip prints `externally-managed-environment`, do not create a virtual environment by default. The setup script should install with:
+
+```bash
+PYTHON -m pip install --user --break-system-packages snowflake-connector-python
+```
+
+- If the connector fails with `certificate verify failed` on a corporate network, check whether the server certificate is issued by a local proxy such as Cisco Secure Access. Setup can create `~/.snowflake-skill/cacert.pem` from certifi plus matching macOS Keychain certificates and saves it as `ca_bundle` in config; all Snowflake scripts then set `REQUESTS_CA_BUNDLE` and `SSL_CERT_FILE` automatically.
+- If TLS succeeds but Snowflake returns `390190` mentioning the SAML Identity Provider account parameter, local setup has moved past Python/TLS. Verify the exact Snowflake account identifier from Snowsight, including any region/cloud or `privatelink` suffix in the account URL, and confirm the IdP/SAML issuer/ACS URL or legacy `SAML_IDENTITY_PROVIDER` account parameter matches that account URL; this can require a Snowflake admin-side fix.
 - If a plain `requests.get("https://<account>.snowflakecomputing.com")` succeeds but the connector fails, treat it as a connector/runtime compatibility issue first, especially with LibreSSL.
 - If Homebrew commands are run from a sandboxed Codex session and fail writing under `~/Library/Caches/Homebrew`, rerun with elevated permission or ask the user to run the Homebrew command directly.
 - The connector may warn that `keyring` is not installed and cannot cache the id token. This is optional but useful for fewer SSO prompts:

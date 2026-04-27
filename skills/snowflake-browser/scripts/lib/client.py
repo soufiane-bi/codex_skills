@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -44,6 +45,17 @@ def load_config():
 def save_config(config):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+
+
+def apply_ca_bundle(config):
+    ca_bundle = config.get("ca_bundle")
+    if not ca_bundle:
+        return
+    ca_path = Path(ca_bundle).expanduser()
+    if not ca_path.exists():
+        raise RuntimeError(f"Configured CA bundle does not exist: {ca_path}")
+    os.environ["REQUESTS_CA_BUNDLE"] = str(ca_path)
+    os.environ["SSL_CERT_FILE"] = str(ca_path)
 
 
 def add_connection_args(parser):
@@ -102,6 +114,7 @@ def validate_sql(sql):
 
 
 def connect(config):
+    apply_ca_bundle(config)
     try:
         import snowflake.connector
     except ImportError as exc:

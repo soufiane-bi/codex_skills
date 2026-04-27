@@ -8,10 +8,11 @@ import shutil
 import ssl
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib.client import CONFIG_FILE, save_config
+from lib.client import CONFIG_DIR, CONFIG_FILE, apply_ca_bundle, save_config
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 SETTINGS_GUIDE = SKILL_DIR / "references" / "snowflake-account-settings.md"
@@ -105,7 +106,7 @@ def collect_connection_config(existing):
     ).lower()
     pasted = read_pasted_config_block() if paste_choice in {"y", "yes"} else {}
     defaults = {**existing, **pasted}
-    return {
+    config = {
         "python": sys.executable,
         "account": prompt("Snowflake account identifier", defaults.get("account"), help_callback=print_settings_help),
         "user": prompt("Username/email", defaults.get("user"), help_callback=print_settings_help),
@@ -129,11 +130,15 @@ def collect_connection_config(existing):
             help_callback=print_settings_help,
         ),
     }
+    if defaults.get("ca_bundle"):
+        config["ca_bundle"] = defaults["ca_bundle"]
+    return config
 
 
 def python_runtime_notes():
     print(f"  Python: {sys.executable}")
     print(f"  SSL: {ssl.OPENSSL_VERSION}")
+    check_expat_runtime()
     if "LibreSSL" not in ssl.OPENSSL_VERSION:
         return
 
@@ -158,6 +163,82 @@ def python_runtime_notes():
         print(f"  Install one with: {brew} install python@3.12")
 
 
+def pyexpat_extension_path():
+    suffix = sysconfig.get_config_var("EXT_SUFFIX") or ""
+    stdlib = Path(sysconfig.get_path("stdlib"))
+    candidate = stdlib / "lib-dynload" / f"pyexpat{suffix}"
+    return candidate if candidate.exists() else None
+
+
+def check_expat_runtime():
+    """Detect the Homebrew Python pyexpat/libexpat mismatch before pip crashes."""
+    result = subprocess.run(
+        [sys.executable, "-c", "from xml.parsers import expat; print(expat.EXPAT_VERSION)"],
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+    if result.returncode == 0:
+        print(f"  expat: {result.stdout.strip()}")
+        return
+
+    print()
+    print("  WARNING: This Python cannot import xml.parsers.expat.")
+    print("  pip may fail before installing the Snowflake connector.")
+    if result.stderr.strip():
+        print("  Python error:")
+        for line in result.stderr.strip().splitlines():
+            print(f"    {line}")
+
+    pyexpat_path = pyexpat_extension_path()
+    brew_expat = Path("/opt/homebrew/opt/expat/lib/libexpat.1.dylib")
+    install_name_tool = shutil.which("install_name_tool")
+    codesign = shutil.which("codesign")
+
+    if pyexpat_path and brew_expat.exists() and install_name_tool and codesign:
+        print()
+        print("  A common Homebrew fix is to link pyexpat to Homebrew's expat and re-sign it.")
+        choice = prompt("Apply this pyexpat fix now? (y/N)", "N", required=False).lower()
+        if choice in {"y", "yes"}:
+            subprocess.check_call(
+                [
+                    install_name_tool,
+                    "-change",
+                    "/usr/lib/libexpat.1.dylib",
+                    str(brew_expat),
+                    str(pyexpat_path),
+                ]
+            )
+            subprocess.check_call([codesign, "--force", "--sign", "-", str(pyexpat_path)])
+            retry = subprocess.run(
+                [sys.executable, "-c", "from xml.parsers import expat; print(expat.EXPAT_VERSION)"],
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+            if retry.returncode == 0:
+                print(f"  expat fixed: {retry.stdout.strip()}")
+                return
+            print("  ERROR: pyexpat still fails after the fix.")
+            if retry.stderr.strip():
+                print(retry.stderr.strip())
+            sys.exit(1)
+
+    if pyexpat_path and brew_expat.exists():
+        print()
+        print("  Manual fix:")
+        print(
+            "    install_name_tool -change /usr/lib/libexpat.1.dylib "
+            f"{brew_expat} {pyexpat_path}"
+        )
+        print(f"    codesign --force --sign - {pyexpat_path}")
+
+
+def externally_managed_python():
+    marker = Path(sysconfig.get_path("stdlib")) / "EXTERNALLY-MANAGED"
+    return marker.exists()
+
+
 def ensure_connector():
     try:
         import snowflake.connector  # noqa: F401
@@ -169,7 +250,21 @@ def ensure_connector():
     print("  snowflake-connector-python is not installed")
     choice = prompt("Install it now with pip? (Y/n)", "Y", required=False).lower()
     if choice in {"", "y", "yes"}:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "snowflake-connector-python"])
+        pip_args = [sys.executable, "-m", "pip", "install", "snowflake-connector-python"]
+        if externally_managed_python():
+            print()
+            print("  This Python is externally managed, so global pip installs are blocked.")
+            print("  Installing into the user package directory instead.")
+            pip_args = [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--user",
+                "--break-system-packages",
+                "snowflake-connector-python",
+            ]
+        subprocess.check_call(pip_args)
         print("  Restarting setup so Python can see the newly installed package...")
         os.execv(sys.executable, [sys.executable, *sys.argv])
     else:
@@ -180,7 +275,16 @@ def ensure_connector():
 def connection_failure_help(exc):
     text = str(exc).lower()
     print(f"  ERROR: Connection test failed: {exc}")
-    if any(marker in text for marker in ["certificate verify failed", "bad handshake", "notopensslwarning"]):
+    if "390190" in text or "saml identity provider account parameter" in text:
+        print()
+        print("  Troubleshooting:")
+        print("  - Python, connector installation, and TLS reached Snowflake successfully.")
+        print("  - Snowflake rejected the browser SSO flow because the IdP account URL/configuration does not match.")
+        print("  - Re-copy the account identifier from Snowsight > View account details > Config File.")
+        print("  - If the account URL includes a region, cloud, or privatelink suffix, include it in the account identifier.")
+        print("  - Ask a Snowflake admin to verify the SAML integration issuer/ACS URL or legacy")
+        print("    SAML_IDENTITY_PROVIDER account parameter matches the account URL used by the connector.")
+    elif any(marker in text for marker in ["certificate verify failed", "bad handshake", "notopensslwarning"]):
         print()
         print("  Troubleshooting:")
         print("  - If this Python reports LibreSSL above, rerun setup with Homebrew Python 3.11+ or 3.12.")
@@ -198,7 +302,77 @@ def connection_failure_help(exc):
         print("  - If no browser opens, run setup directly in your local terminal.")
 
 
+def is_certificate_verify_failure(exc):
+    text = str(exc).lower()
+    return "certificate verify failed" in text or "sslcertverificationerror" in text
+
+
+def keychain_certificates(common_name):
+    security = shutil.which("security")
+    if not security:
+        return ""
+    result = subprocess.run(
+        [security, "find-certificate", "-a", "-c", common_name, "-p"],
+        text=True,
+        capture_output=True,
+    )
+    return result.stdout if result.returncode == 0 else ""
+
+
+def create_ca_bundle_from_keychain(common_name="Cisco"):
+    try:
+        import certifi
+    except ImportError:
+        print("  ERROR: certifi is not installed, so a CA bundle cannot be created.")
+        return None
+
+    extra_certs = keychain_certificates(common_name).strip()
+    if not extra_certs:
+        print(f"  No macOS Keychain certificates found matching: {common_name}")
+        return None
+
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    bundle = CONFIG_DIR / "cacert.pem"
+    base_certs = Path(certifi.where()).read_text()
+    bundle.write_text(
+        base_certs.rstrip()
+        + "\n\n# Extra certificates from macOS Keychain for Snowflake connectivity\n"
+        + extra_certs
+        + "\n"
+    )
+    return bundle
+
+
+def maybe_retry_with_keychain_ca(exc, config):
+    if not is_certificate_verify_failure(exc):
+        return False
+
+    print()
+    print("  Certificate verification failed.")
+    print("  If your network uses Cisco Secure Access or similar TLS inspection,")
+    print("  Snowflake's requests stack may need a CA bundle that includes that root certificate.")
+    choice = prompt(
+        "Create Snowflake CA bundle from certifi + Cisco Keychain certificates and retry? (Y/n)",
+        "Y",
+        required=False,
+    ).lower()
+    if choice not in {"", "y", "yes"}:
+        return False
+
+    bundle = create_ca_bundle_from_keychain("Cisco")
+    if not bundle:
+        return False
+
+    config["ca_bundle"] = str(bundle)
+    apply_ca_bundle(config)
+    print(f"  Using CA bundle: {bundle}")
+    save_config(config)
+    print(f"  Saved interim config to {CONFIG_FILE}")
+    return True
+
+
 def test_connection(config):
+    apply_ca_bundle(config)
     import snowflake.connector
 
     kwargs = {
@@ -255,8 +429,15 @@ def main():
     try:
         result = test_connection(config)
     except Exception as exc:
-        connection_failure_help(exc)
-        sys.exit(1)
+        if maybe_retry_with_keychain_ca(exc, config):
+            try:
+                result = test_connection(config)
+            except Exception as retry_exc:
+                connection_failure_help(retry_exc)
+                sys.exit(1)
+        else:
+            connection_failure_help(exc)
+            sys.exit(1)
 
     print("  Connected successfully:")
     for key, value in result.items():
