@@ -115,6 +115,7 @@ PYTHON -m pip install "snowflake-connector-python[secure-local-storage]"
 | Sample rows | `sample.py` | `--schema=NAME --table=NAME [--limit=N]` |
 | Get DDL | `ddl.py` | `--type=table|view --schema=NAME --name=NAME` |
 | Search objects | `search.py` | `--pattern=TEXT [--database=NAME]` |
+| Profile table | `profile_table.py` | `--schema=NAME --table=NAME [--grain=COL1,COL2]` |
 
 Common options:
 
@@ -150,6 +151,24 @@ The scripts enforce read-only SQL:
 - Do not run unbounded raw data queries on large tables; use filters, aggregations, or `sample.py`
 - Always add `LIMIT` when exploring unfamiliar tables
 - Check table and column metadata before building larger joins
+- When checking duplicates, only assert uniqueness when the table grain is known. Use `profile_table.py --grain=...` for explicit grain validation.
+
+## Profiling and Validation
+
+Use `profile_table.py` before writing larger analytical SQL or when validating a new dataset. It reports:
+
+- table row count and storage metadata
+- per-column null count and null percentage
+- per-column approximate distinct count
+- optional grain validation when `--grain` is supplied
+
+Example:
+
+```bash
+PYTHON scripts/profile_table.py --database DEMO_DWH --schema RETAIL_MART --table FACT_SALES --grain=KNOWN_GRAIN_COL1,KNOWN_GRAIN_COL2
+```
+
+Do not infer a primary key or fact-table grain from names alone. If the business grain is unknown, profile the table first, inspect likely key columns, then ask the user before running duplicate-grain assertions.
 
 ## SQL Standards
 

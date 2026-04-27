@@ -14,18 +14,18 @@ def main():
     parser = argparse.ArgumentParser(description="Get Snowflake DDL")
     add_connection_args(parser)
     parser.add_argument("--type", choices=["table", "view"], default="table", help="Object type")
-    parser.add_argument("--schema", required=True, help="Schema name")
     parser.add_argument("--name", required=True, help="Object name")
     args = parser.parse_args()
     config = resolve_config(args)
 
     database = args.database or config.get("database")
-    if not database:
-        print("ERROR: database is required. Pass --database or run setup with a default database.", file=sys.stderr)
+    schema = args.schema or config.get("schema")
+    if not database or not schema:
+        print("ERROR: database and schema are required. Pass --database/--schema or run setup with defaults.", file=sys.stderr)
         sys.exit(1)
 
     object_type = args.type.upper()
-    object_name = qualified_name(database=database, schema=args.schema, name=args.name).replace('"', "")
+    object_name = qualified_name(database=database, schema=schema, name=args.name).replace('"', "")
     sql = f"SELECT GET_DDL({sql_literal(object_type)}, {sql_literal(object_name)}) AS ddl"
 
     columns, rows, meta = execute_query(sql, config, timeout=args.timeout, max_rows=args.max_rows)

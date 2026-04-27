@@ -13,21 +13,21 @@ from lib.formatter import format_duration, format_output
 def main():
     parser = argparse.ArgumentParser(description="Sample rows from a Snowflake table or view")
     add_connection_args(parser)
-    parser.add_argument("--schema", required=True, help="Schema name")
     parser.add_argument("--table", required=True, help="Table or view name")
     parser.add_argument("--limit", type=int, default=100, help="Rows to return")
     args = parser.parse_args()
     config = resolve_config(args)
 
     database = args.database or config.get("database")
-    if not database:
-        print("ERROR: database is required. Pass --database or run setup with a default database.", file=sys.stderr)
+    schema = args.schema or config.get("schema")
+    if not database or not schema:
+        print("ERROR: database and schema are required. Pass --database/--schema or run setup with defaults.", file=sys.stderr)
         sys.exit(1)
 
     limit = max(1, min(args.limit, args.max_rows))
     sql = f"""
     SELECT *
-    FROM   {qualified_name(database=database, schema=args.schema, name=args.table)}
+    FROM   {qualified_name(database=database, schema=schema, name=args.table)}
     LIMIT  {limit}
     """
 
