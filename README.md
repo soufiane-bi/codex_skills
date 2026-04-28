@@ -6,7 +6,7 @@ Shared Codex skills.
 
 ### Snowflake
 
-Read-only Snowflake querying, metadata exploration, table profiling, and validation using either programmatic access token (PAT) authentication or browser SSO.
+Read-only Snowflake querying, metadata exploration, table profiling, and validation using either programmatic access token (PAT) authentication (not secure only use for testing) or browser SSO.
 
 Install from GitHub:
 
@@ -41,7 +41,7 @@ The setup wizard asks for:
 - Default schema
 - Default role
 - Authentication method:
-  - Programmatic access token, recommended when SSO is not enabled
+  - Programmatic access token- only to be used for testing purposes and when SSO is not enabled
   - Browser connection, for Snowflake SSO/federated authentication only
 - Whether to test the connection now
 
@@ -54,4 +54,7 @@ cd ~/.codex/skills/snowflake
 python3 scripts/session.py
 ```
 
-Paste the PAT into the popup once. Commands launched from that temporary shell can use Snowflake until the shell is closed.
+Paste the PAT into the popup once (Mac users only) Commands launched from that temporary shell can use Snowflake until the shell is closed.
+
+**Only use the PAT authentication for testing purposes only.**
+
