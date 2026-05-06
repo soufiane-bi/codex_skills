@@ -167,7 +167,9 @@ Use this workflow when the user asks to build a Streamlit app in Snowflake, app-
 
 - Read `references/streamlit-writeback-app.md` before generating or modifying a writeback app.
 - Use `assets/streamlit-writeback-app/` as the starter template when the user wants code.
-- Before finalizing form fields, ask whether the user has a CSV/Excel sample or an image of the intended sheet. If not, collect the field names and required fields in chat and use the reference defaults as a starting point.
+- Requirement discovery is a hard gate before finalizing fields, table DDL, validators, or forms. Ask whether the user has a CSV/Excel sample, a screenshot/image of the intended sheet, or a list of field names and required fields.
+- If the user has no sample yet, ask for the business object, user-entered columns, Snowflake lookup/dropdown columns, required fields, approval flow, and any grain or uniqueness rule. Do not silently proceed with default fields.
+- Use default promotion/forecast/adjustment fields only after telling the user they are provisional and getting confirmation to proceed without a sample.
 - Inspect target mart metadata with the read-only scripts before finalizing key columns and lookup labels.
 - Prefer tabs or business record types over raw table selectors. Map record types internally to approved fully-qualified tables.
 - Use `STREAMLIT_APP_ADMIN` for first-run storage creation, with `ACCOUNTADMIN` only as a temporary trial-account fallback when the user asks for it.

@@ -16,11 +16,11 @@ Prefer a controlled app over free-form table appends:
 
 ## Requirements Discovery
 
-Before finalizing the app fields, ask the user for the best available example of the intended input shape:
+Requirement discovery is a hard gate before finalizing app fields, table DDL, validators, or forms. Ask the user for the best available example of the intended input shape:
 
 1. Prefer a CSV or Excel extract with 1-5 representative rows.
 2. Accept a screenshot/image of an Excel sheet when the user cannot share a file; use it to infer column names, ordering, and rough field types, then confirm any unclear fields.
-3. If the user has no sample, ask them to describe the fields manually in chat.
+3. If the user has no sample, ask them to describe the fields manually in chat before choosing defaults.
 
 Keep the questions short and practical:
 
@@ -30,7 +30,7 @@ Keep the questions short and practical:
 - Which fields are required?
 - Should submissions go straight to approved, or stay pending until an admin approves them?
 
-If no sample is provided, start from the recommended fields below and tell the user they are a sensible default rather than a final contract.
+Only use the recommended fields below after confirming the user wants to proceed without a sample. Tell the user they are provisional defaults rather than a final contract.
 
 ## First-Run Storage Flow
 
