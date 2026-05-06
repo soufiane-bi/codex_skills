@@ -1,33 +1,56 @@
-from config import EXPECTED_FORECAST_FIELDS, REQUIRED_FORECAST_FIELDS
+from config import (
+    EXPECTED_FORECAST_FIELDS,
+    EXPECTED_PROMOTION_FIELDS,
+    REQUIRED_FORECAST_FIELDS,
+    REQUIRED_PROMOTION_FIELDS,
+)
 
 
 class ValidationError(ValueError):
-    """Raised when a forecast payload is not valid for the forecast table."""
+    """Raised when a submitted payload is not valid for its ingest table."""
 
 
-def validate_forecast_payload(payload):
+def _validate_payload(payload, expected_fields, required_fields, table_label):
     payload_fields = set(payload)
-    unexpected_fields = payload_fields - EXPECTED_FORECAST_FIELDS
-    missing_fields = REQUIRED_FORECAST_FIELDS - payload_fields
+    unexpected_fields = payload_fields - expected_fields
+    missing_fields = required_fields - payload_fields
     empty_required = {
         field
-        for field in REQUIRED_FORECAST_FIELDS
+        for field in required_fields
         if payload.get(field) in (None, "")
     }
 
     if unexpected_fields:
         fields = ", ".join(sorted(unexpected_fields))
         raise ValidationError(
-            "This submission cannot be saved to the forecast table because these "
+            f"This submission cannot be saved to the {table_label} table because these "
             f"fields do not belong there: {fields}."
         )
 
     if missing_fields:
         fields = ", ".join(sorted(missing_fields))
-        raise ValidationError(f"The forecast submission is missing required fields: {fields}.")
+        raise ValidationError(f"The {table_label} submission is missing required fields: {fields}.")
 
     if empty_required:
         fields = ", ".join(sorted(empty_required))
-        raise ValidationError(f"The forecast submission has blank required fields: {fields}.")
+        raise ValidationError(f"The {table_label} submission has blank required fields: {fields}.")
 
     return True
+
+
+def validate_forecast_payload(payload):
+    return _validate_payload(
+        payload,
+        EXPECTED_FORECAST_FIELDS,
+        REQUIRED_FORECAST_FIELDS,
+        "forecast",
+    )
+
+
+def validate_promotion_payload(payload):
+    return _validate_payload(
+        payload,
+        EXPECTED_PROMOTION_FIELDS,
+        REQUIRED_PROMOTION_FIELDS,
+        "promotion",
+    )

@@ -7,7 +7,7 @@ from config import (
     APP_NAME,
     APPROVED_STATUS,
     FORECAST_KEY_COLUMN,
-    PENDING_STATUS,
+    PROMOTION_KEY_COLUMN,
     REJECTED_STATUS,
 )
 from storage import (
@@ -15,9 +15,13 @@ from storage import (
     get_missing_tables,
     is_app_admin,
     load_pending_forecasts,
+    load_pending_promotions,
     load_recent_forecasts,
+    load_recent_promotions,
     set_forecast_statuses,
+    set_promotion_statuses,
     submit_forecast,
+    submit_promotion,
 )
 from validators import ValidationError
 
@@ -31,34 +35,42 @@ admin_user = is_app_admin(session)
 missing_tables = get_missing_tables(session)
 if missing_tables:
     if admin_user:
-        st.warning("Manual Data Ingest storage is not initialised.")
-        if st.button("Initialise forecast storage", type="primary"):
+        st.warning("Manual Data Ingest storage is not initialised: " + ", ".join(missing_tables))
+        if st.button("Initialise ingest storage", type="primary"):
             create_storage_objects(session)
-            st.success("Forecast storage created. Refresh the app to continue.")
+            st.success("Manual Data Ingest storage created. Refresh the app to continue.")
             st.stop()
     else:
         st.error(
             "Manual Data Ingest is not ready yet. "
-            "Please contact a Streamlit app admin to initialise forecast storage."
+            "Please contact a Streamlit app admin to initialise ingest storage."
         )
     st.stop()
 
 if "forecast_form_version" not in st.session_state:
     st.session_state["forecast_form_version"] = 0
 
+if "promotion_form_version" not in st.session_state:
+    st.session_state["promotion_form_version"] = 0
+
 if st.session_state.pop("forecast_submit_success", False):
     st.success("Forecast submitted for admin approval.")
 
-admin_review_message = st.session_state.pop("forecast_admin_review_message", None)
-if admin_review_message:
-    message_type, message = admin_review_message
+if st.session_state.pop("promotion_submit_success", False):
+    st.success("Promotion submitted for admin approval.")
+
+for message_key in ("forecast_admin_review_message", "promotion_admin_review_message"):
+    review_message = st.session_state.pop(message_key, None)
+    if not review_message:
+        continue
+    message_type, message = review_message
     if message_type == "success":
         st.success(message)
     else:
         st.warning(message)
 
 
-def submit_payload(payload):
+def submit_forecast_payload(payload):
     try:
         submit_forecast(session, payload)
     except ValidationError as exc:
@@ -69,6 +81,20 @@ def submit_payload(payload):
         st.cache_data.clear()
         st.session_state["forecast_submit_success"] = True
         st.session_state["forecast_form_version"] += 1
+        st.rerun()
+
+
+def submit_promotion_payload(payload):
+    try:
+        submit_promotion(session, payload)
+    except ValidationError as exc:
+        st.error(str(exc))
+    except Exception as exc:
+        st.error(f"Could not submit promotion: {exc}")
+    else:
+        st.cache_data.clear()
+        st.session_state["promotion_submit_success"] = True
+        st.session_state["promotion_form_version"] += 1
         st.rerun()
 
 
@@ -123,7 +149,58 @@ def review_pending_forecasts():
         st.rerun()
 
 
-forecast_tab = st.tabs(["Forecast"])[0]
+def review_pending_promotions():
+    pending = load_pending_promotions(session)
+
+    if pending.empty:
+        st.info("No promotions are pending approval.")
+        return
+
+    st.dataframe(pending, use_container_width=True)
+
+    pending_records = {
+        row[PROMOTION_KEY_COLUMN]: row
+        for row in pending.to_dict("records")
+    }
+
+    def format_promotion_key(promotion_key):
+        row = pending_records.get(promotion_key, {})
+        return (
+            f"{promotion_key} | {row.get('PROMOTION_CODE', '')} | "
+            f"{row.get('PRODUCT_KEY', '')} | "
+            f"{row.get('PERIOD_START_DATE_KEY', '')} to {row.get('PERIOD_END_DATE_KEY', '')} | "
+            f"Price {row.get('PROMOTION_PRICE', '')}"
+        )
+
+    selected_keys = st.multiselect(
+        "Select promotions to review",
+        pending[PROMOTION_KEY_COLUMN].tolist(),
+        format_func=format_promotion_key,
+        key="promotion_review_keys",
+    )
+    review_comment = st.text_area("Admin review comment", key="promotion_review_comment")
+
+    col1, col2 = st.columns(2)
+    if col1.button("Approve selected promotions", type="primary", disabled=not selected_keys):
+        set_promotion_statuses(session, selected_keys, APPROVED_STATUS, review_comment)
+        st.cache_data.clear()
+        st.session_state["promotion_admin_review_message"] = (
+            "success",
+            f"Approved {len(selected_keys)} promotion submission(s).",
+        )
+        st.rerun()
+
+    if col2.button("Reject selected promotions", disabled=not selected_keys):
+        set_promotion_statuses(session, selected_keys, REJECTED_STATUS, review_comment)
+        st.cache_data.clear()
+        st.session_state["promotion_admin_review_message"] = (
+            "warning",
+            f"Rejected {len(selected_keys)} promotion submission(s).",
+        )
+        st.rerun()
+
+
+forecast_tab, promotion_tab = st.tabs(["Forecast", "Promotions"])
 
 with forecast_tab:
     st.caption("Submit manual forecast records using the Excel-style layout.")
@@ -184,7 +261,7 @@ with forecast_tab:
                 "COMMENT": comment,
                 "STATUS": status,
             }
-            submit_payload(payload)
+            submit_forecast_payload(payload)
 
     st.divider()
 
@@ -194,3 +271,78 @@ with forecast_tab:
     else:
         st.subheader("Recent forecast submissions")
         st.dataframe(load_recent_forecasts(session), use_container_width=True)
+
+with promotion_tab:
+    st.caption("Submit manual promotion records using the Excel-style layout.")
+
+    form_version = st.session_state["promotion_form_version"]
+
+    with st.form("promotion_submission_form"):
+        st.subheader("New promotion")
+
+        col1, col2, col3 = st.columns(3)
+        promotion_code = col1.text_input("PROMOTION_CODE", value="", key=f"promotion_code_{form_version}")
+        product_key = col2.text_input("PRODUCT_KEY", value="", key=f"promotion_product_key_{form_version}")
+        promotion_price = col3.number_input(
+            "PROMOTION_PRICE",
+            min_value=0.0,
+            value=0.0,
+            step=0.01,
+            key=f"promotion_price_{form_version}",
+        )
+
+        date_col1, date_col2, date_col3 = st.columns(3)
+        date_key = date_col1.date_input("DATE_KEY", value=date.today(), key=f"promotion_date_key_{form_version}")
+        period_start = date_col2.date_input(
+            "PERIOD_START_DATE_KEY",
+            value=date.today(),
+            key=f"promotion_period_start_{form_version}",
+        )
+        period_end = date_col3.date_input(
+            "PERIOD_END_DATE_KEY",
+            value=date.today() + timedelta(days=7),
+            key=f"promotion_period_end_{form_version}",
+        )
+
+        key_col1, key_col2, key_col3 = st.columns(3)
+        store_key = key_col1.text_input("STORE_KEY", value="", key=f"promotion_store_key_{form_version}")
+        channel_key = key_col2.text_input("CHANNEL_KEY", value="", key=f"promotion_channel_key_{form_version}")
+        sku = key_col3.text_input("SKU", value="", key=f"promotion_sku_{form_version}")
+
+        code_col1, code_col2, code_col3 = st.columns(3)
+        store_code = code_col1.text_input("STORE_CODE", value="", key=f"promotion_store_code_{form_version}")
+        channel_code = code_col2.text_input("CHANNEL_CODE", value="", key=f"promotion_channel_code_{form_version}")
+        country_code = code_col3.text_input("COUNTRY_CODE", value="UK", key=f"promotion_country_code_{form_version}")
+
+        comment = st.text_area("COMMENT", value="", key=f"promotion_comment_{form_version}")
+        status = st.selectbox("STATUS", ["Valid", "Invalid"], index=0, key=f"promotion_status_{form_version}")
+
+        submitted = st.form_submit_button("Submit promotion for approval", type="primary")
+
+        if submitted:
+            payload = {
+                "PROMOTION_CODE": promotion_code,
+                "DATE_KEY": date_key,
+                "PERIOD_START_DATE_KEY": period_start,
+                "PERIOD_END_DATE_KEY": period_end,
+                "PRODUCT_KEY": product_key,
+                "STORE_KEY": store_key,
+                "CHANNEL_KEY": channel_key,
+                "SKU": sku,
+                "STORE_CODE": store_code,
+                "CHANNEL_CODE": channel_code,
+                "COUNTRY_CODE": country_code,
+                "PROMOTION_PRICE": promotion_price,
+                "COMMENT": comment,
+                "STATUS": status,
+            }
+            submit_promotion_payload(payload)
+
+    st.divider()
+
+    if admin_user:
+        st.subheader("Pending approval")
+        review_pending_promotions()
+    else:
+        st.subheader("Recent promotion submissions")
+        st.dataframe(load_recent_promotions(session), use_container_width=True)
