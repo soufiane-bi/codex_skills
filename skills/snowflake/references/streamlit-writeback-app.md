@@ -10,9 +10,29 @@ Prefer a controlled app over free-form table appends:
 - Map each tab internally to an approved fully-qualified table name.
 - Never expose raw table-name input to users.
 - Validate fields before insert and raise a clear error when a payload contains fields for the wrong record type.
-- Submit normal-user changes as `PENDING_APPROVAL`; only `STREAMLIT_APP_ADMIN` users should approve or reject records.
+- Submit normal-user changes as `PENDING_APPROVAL`; only users with the app-specific admin role should approve or reject records.
 - Keep foreign-key validation optional. Dropdowns normally prevent wrong keys, and per-submit FK checks add extra Snowflake queries. Enable them only when the user wants stronger protection.
 - Keep Snowflake helper-script exploration read-only; generate or edit writeback code, but do not execute DDL/DML unless the user explicitly asks and the active role is appropriate.
+
+## App Scope Discovery
+
+Before generating app code or setup SQL, ask for the app's Snowflake scope:
+
+- App name and short app code, for example `Forecast Planner` and `FORECAST_PLANNER`.
+- Target database for the app and writeback tables.
+- Source schema(s) to read from, for example marts or dimensions used for dropdowns.
+- Writeback schema to create or use.
+- Warehouse the app should run on.
+- Admin role and standard user role.
+- Snowflake users, groups, or existing roles that should receive admin or user access.
+
+If the user is unsure, propose app-specific names rather than shared generic ones:
+
+- Writeback schema: `<APP_CODE>_APP`, for example `FORECAST_PLANNER_APP`.
+- Admin role: `<APP_CODE>_ADMIN`, for example `FORECAST_PLANNER_ADMIN`.
+- User role: `<APP_CODE>_USER`, for example `FORECAST_PLANNER_USER`.
+
+Use a shared app schema or shared app roles only when the user explicitly asks for that operating model. The safer default is one schema and two roles per app so access, ownership, and future cleanup are isolated.
 
 ## Requirements Discovery
 
@@ -38,53 +58,64 @@ On app startup:
 
 1. Check whether all required writeback tables exist.
 2. If all exist, load dimension lookups and show append forms.
-3. If tables are missing and the user has `STREAMLIT_APP_ADMIN`, show an `Initialise storage tables` button.
+3. If tables are missing and the user has the app-specific admin role, show an `Initialise storage tables` button.
 4. If tables are missing and the user is not an admin, show a blocking error asking them to contact an app admin.
 5. For every user submission, write `STATUS = 'PENDING_APPROVAL'`. Show approval/rejection actions only to admins.
 
 Admin check pattern:
 
 ```python
+from config import ACCOUNTADMIN_IS_ADMIN, ADMIN_ROLE
+
+
 def is_app_admin(session):
-    value = session.sql("""
+    accountadmin_clause = "OR CURRENT_ROLE() = 'ACCOUNTADMIN'" if ACCOUNTADMIN_IS_ADMIN else ""
+    value = session.sql(f"""
         SELECT
-            IS_ROLE_IN_SESSION('STREAMLIT_APP_ADMIN')
-            OR CURRENT_ROLE() = 'ACCOUNTADMIN'
+            IS_ROLE_IN_SESSION('{ADMIN_ROLE}')
+            {accountadmin_clause}
     """).collect()[0][0]
 
     return bool(value)
 ```
 
-`ACCOUNTADMIN` is acceptable as a temporary trial-account fallback. Prefer `STREAMLIT_APP_ADMIN` for real use.
+`ACCOUNTADMIN` is acceptable as a temporary trial-account fallback. Prefer the app-specific admin role for real use.
 
 ## Role Setup
 
 Generate setup SQL like this when the user asks for role/admin setup:
 
 ```sql
+-- Replace placeholders with the app-specific values agreed during scope discovery.
 USE ROLE ACCOUNTADMIN;
 
-CREATE ROLE IF NOT EXISTS STREAMLIT_APP_ADMIN
-    COMMENT = 'Admin role for Streamlit writeback app setup and storage initialisation';
+CREATE ROLE IF NOT EXISTS <APP_ADMIN_ROLE>
+    COMMENT = 'Admin role for <APP_NAME> Streamlit writeback app setup and storage initialisation';
 
-CREATE ROLE IF NOT EXISTS STREAMLIT_APP_USER
-    COMMENT = 'Standard role for Streamlit writeback app users';
+CREATE ROLE IF NOT EXISTS <APP_USER_ROLE>
+    COMMENT = 'Standard role for <APP_NAME> Streamlit writeback app users';
 
-GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE STREAMLIT_APP_ADMIN;
-GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE STREAMLIT_APP_USER;
+CREATE SCHEMA IF NOT EXISTS <APP_DATABASE>.<APP_SCHEMA>
+    COMMENT = 'Writeback schema for <APP_NAME>';
 
-GRANT USAGE ON DATABASE DEMO_DWH TO ROLE STREAMLIT_APP_ADMIN;
-GRANT USAGE ON DATABASE DEMO_DWH TO ROLE STREAMLIT_APP_USER;
+GRANT USAGE ON WAREHOUSE <APP_WAREHOUSE> TO ROLE <APP_ADMIN_ROLE>;
+GRANT USAGE ON WAREHOUSE <APP_WAREHOUSE> TO ROLE <APP_USER_ROLE>;
 
-GRANT USAGE ON SCHEMA DEMO_DWH.RETAIL_MART TO ROLE STREAMLIT_APP_ADMIN;
-GRANT USAGE ON SCHEMA DEMO_DWH.RETAIL_MART TO ROLE STREAMLIT_APP_USER;
+GRANT USAGE ON DATABASE <APP_DATABASE> TO ROLE <APP_ADMIN_ROLE>;
+GRANT USAGE ON DATABASE <APP_DATABASE> TO ROLE <APP_USER_ROLE>;
 
-GRANT SELECT ON ALL TABLES IN SCHEMA DEMO_DWH.RETAIL_MART TO ROLE STREAMLIT_APP_ADMIN;
-GRANT SELECT ON ALL TABLES IN SCHEMA DEMO_DWH.RETAIL_MART TO ROLE STREAMLIT_APP_USER;
-GRANT SELECT ON FUTURE TABLES IN SCHEMA DEMO_DWH.RETAIL_MART TO ROLE STREAMLIT_APP_ADMIN;
-GRANT SELECT ON FUTURE TABLES IN SCHEMA DEMO_DWH.RETAIL_MART TO ROLE STREAMLIT_APP_USER;
+GRANT USAGE ON SCHEMA <APP_DATABASE>.<APP_SCHEMA> TO ROLE <APP_ADMIN_ROLE>;
+GRANT USAGE ON SCHEMA <APP_DATABASE>.<APP_SCHEMA> TO ROLE <APP_USER_ROLE>;
+GRANT CREATE TABLE ON SCHEMA <APP_DATABASE>.<APP_SCHEMA> TO ROLE <APP_ADMIN_ROLE>;
+GRANT CREATE STAGE ON SCHEMA <APP_DATABASE>.<APP_SCHEMA> TO ROLE <APP_ADMIN_ROLE>;
+GRANT CREATE STREAMLIT ON SCHEMA <APP_DATABASE>.<APP_SCHEMA> TO ROLE <APP_ADMIN_ROLE>;
 
-GRANT CREATE SCHEMA ON DATABASE DEMO_DWH TO ROLE STREAMLIT_APP_ADMIN;
+GRANT USAGE ON SCHEMA <APP_DATABASE>.<SOURCE_SCHEMA> TO ROLE <APP_ADMIN_ROLE>;
+GRANT USAGE ON SCHEMA <APP_DATABASE>.<SOURCE_SCHEMA> TO ROLE <APP_USER_ROLE>;
+GRANT SELECT ON ALL TABLES IN SCHEMA <APP_DATABASE>.<SOURCE_SCHEMA> TO ROLE <APP_ADMIN_ROLE>;
+GRANT SELECT ON ALL TABLES IN SCHEMA <APP_DATABASE>.<SOURCE_SCHEMA> TO ROLE <APP_USER_ROLE>;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA <APP_DATABASE>.<SOURCE_SCHEMA> TO ROLE <APP_ADMIN_ROLE>;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA <APP_DATABASE>.<SOURCE_SCHEMA> TO ROLE <APP_USER_ROLE>;
 ```
 
 After storage objects exist, grant app users only the minimum table privileges they need, usually `SELECT, INSERT` on writeback tables and `SELECT` on dimension tables.
@@ -179,7 +210,7 @@ A reusable starter template lives in `assets/streamlit-writeback-app/`:
 - `validators.py` - record-type field validation and friendly errors
 - `config.py` - database/schema/table config and expected field mapping
 
-A focused forecast-only project lives in `assets/manual-data-ingest-forecast-app/`. Use it when the user wants a single Snowflake Streamlit app called Manual Data Ingest with only forecast submissions and admin approval.
+Concrete customer or account-specific apps should live outside the shared skill assets, for example in a private repo or an ignored local workspace such as `.local/streamlit-apps/<app-name>/`. Keep only reusable, sanitized templates in this skill.
 
 When using the template:
 

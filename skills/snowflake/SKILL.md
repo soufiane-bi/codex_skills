@@ -168,15 +168,17 @@ Use this workflow when the user asks to build a Streamlit app in Snowflake, app-
 - Read `references/streamlit-writeback-app.md` before generating or modifying a writeback app.
 - Use `assets/streamlit-writeback-app/` as the starter template when the user wants code.
 - Requirement discovery is a hard gate before finalizing fields, table DDL, validators, or forms. Ask whether the user has a CSV/Excel sample, a screenshot/image of the intended sheet, or a list of field names and required fields.
+- For every new app, ask for the target database, source schema(s), writeback schema, warehouse, admin role, user role, and users or groups to grant. If the user is unsure, suggest app-specific names such as `<APP_CODE>_APP`, `<APP_CODE>_ADMIN`, and `<APP_CODE>_USER`.
+- Prefer a dedicated writeback schema and dedicated app roles per app. Do not reuse broad roles such as `STREAMLIT_APP_ADMIN` or `STREAMLIT_APP_USER` unless the user explicitly wants shared roles.
 - If the user has no sample yet, ask for the business object, user-entered columns, Snowflake lookup/dropdown columns, required fields, approval flow, and any grain or uniqueness rule. Do not silently proceed with default fields.
 - Use default promotion/forecast/adjustment fields only after telling the user they are provisional and getting confirmation to proceed without a sample.
 - Inspect target mart metadata with the read-only scripts before finalizing key columns and lookup labels.
 - Prefer tabs or business record types over raw table selectors. Map record types internally to approved fully-qualified tables.
-- Use `STREAMLIT_APP_ADMIN` for first-run storage creation, with `ACCOUNTADMIN` only as a temporary trial-account fallback when the user asks for it.
+- Use the app-specific admin role for first-run storage creation, with `ACCOUNTADMIN` only as a temporary trial-account fallback when the user asks for it.
 - On app startup, check whether storage tables exist. If they exist, go directly to append forms. If not, show storage initialization only to admins and block standard users with a clear message.
 - Validate payload fields against the selected record type before insert, and show errors when users attempt to save fields that belong to another table.
 - Keep foreign-key validation optional and disabled by default unless the user asks for stricter submit-time checks.
-- Submit normal-user records as `PENDING_APPROVAL`; expose approve/reject actions only to `STREAMLIT_APP_ADMIN` users and capture the admin's approval or rejection comment.
+- Submit normal-user records as `PENDING_APPROVAL`; expose approve/reject actions only to users with the app-specific admin role and capture the admin's approval or rejection comment.
 - Do not execute CREATE/INSERT/UPDATE/DELETE through the local read-only helper scripts. Generate app code or reviewed SQL unless the user explicitly asks for write execution with an appropriate role.
 
 ## Defensive Guardrails
