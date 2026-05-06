@@ -1,11 +1,11 @@
 ---
 name: snowflake
-description: Query Snowflake safely using programmatic access token or browser SSO authentication. Use whenever the user mentions Snowflake, Snowflake SQL, warehouse/database/schema exploration, table metadata, DDL, sample data, query execution, or business analysis backed by Snowflake. Always use this skill for Snowflake-related tasks and enforce read-only SQL guardrails.
+description: Query Snowflake safely using programmatic access token or browser SSO authentication, and design or scaffold Snowflake Streamlit writeback apps. Use whenever the user mentions Snowflake, Snowflake SQL, warehouse/database/schema exploration, table metadata, DDL, sample data, query execution, business analysis backed by Snowflake, Streamlit in Snowflake, app-managed writeback tables, forecast/promotion/adjustment apps, or Snowflake app admin setup. Enforce read-only SQL guardrails for direct exploration scripts; generate writeback DDL/DML only as reviewed app code or explicit user-requested SQL.
 ---
 
 # Snowflake Skill
 
-Read-only Snowflake exploration and business analysis using the Snowflake Python connector with programmatic access token (PAT) or browser SSO authentication.
+Read-only Snowflake exploration and business analysis using the Snowflake Python connector with programmatic access token (PAT) or browser SSO authentication. Also supports designing and scaffolding Snowflake Streamlit writeback apps that use controlled app tables, role-gated first-run setup, and validated inserts.
 
 All scripts are in the skill's `scripts/` folder and require Python 3. The setup wizard installs `snowflake-connector-python` if it is missing.
 
@@ -161,9 +161,25 @@ Common options:
 
 Query results are automatically saved to `~/snowflake-exports/query-{timestamp}.csv`, unless `--no-save` is used. The terminal shows an aligned preview for quick inspection. Use `--save-sql` to save the SQL alongside the result file.
 
+## Snowflake Streamlit Writeback Apps
+
+Use this workflow when the user asks to build a Streamlit app in Snowflake, app-managed writeback tables, forecast inputs, promotion inputs, manual adjustments, or admin-first storage setup.
+
+- Read `references/streamlit-writeback-app.md` before generating or modifying a writeback app.
+- Use `assets/streamlit-writeback-app/` as the starter template when the user wants code.
+- Before finalizing form fields, ask whether the user has a CSV/Excel sample or an image of the intended sheet. If not, collect the field names and required fields in chat and use the reference defaults as a starting point.
+- Inspect target mart metadata with the read-only scripts before finalizing key columns and lookup labels.
+- Prefer tabs or business record types over raw table selectors. Map record types internally to approved fully-qualified tables.
+- Use `STREAMLIT_APP_ADMIN` for first-run storage creation, with `ACCOUNTADMIN` only as a temporary trial-account fallback when the user asks for it.
+- On app startup, check whether storage tables exist. If they exist, go directly to append forms. If not, show storage initialization only to admins and block standard users with a clear message.
+- Validate payload fields against the selected record type before insert, and show errors when users attempt to save fields that belong to another table.
+- Keep foreign-key validation optional and disabled by default unless the user asks for stricter submit-time checks.
+- Submit normal-user records as `PENDING_APPROVAL`; expose approve/reject actions only to `STREAMLIT_APP_ADMIN` users and capture the admin's approval or rejection comment.
+- Do not execute CREATE/INSERT/UPDATE/DELETE through the local read-only helper scripts. Generate app code or reviewed SQL unless the user explicitly asks for write execution with an appropriate role.
+
 ## Defensive Guardrails
 
-The scripts enforce read-only SQL:
+The scripts enforce read-only SQL for direct Snowflake exploration. Streamlit writeback app code may include DDL/DML for the app to run, but Codex should not execute that DDL/DML through these helper scripts unless the user explicitly requests a write operation with an appropriate role.
 
 - Allowed statement starters: `SELECT`, `WITH`, `SHOW`, `DESCRIBE`, `DESC`, `EXPLAIN`
 - Blocked statement types include: `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `CREATE`, `DROP`, `ALTER`, `TRUNCATE`, `COPY`, `PUT`, `GET`, `REMOVE`, `CALL`, `GRANT`, `REVOKE`, `BEGIN`, `COMMIT`, `ROLLBACK`, `USE`, `SET`
