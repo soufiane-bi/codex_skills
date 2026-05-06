@@ -12,11 +12,16 @@ class ValidationError(ValueError):
 
 def _validate_payload(payload, expected_fields, required_fields, table_label):
     payload_fields = set(payload)
+    effective_required_fields = set(required_fields)
+    channel_key = str(payload.get("CHANNEL_KEY") or "").strip().lower()
+    if channel_key == "online":
+        effective_required_fields.discard("STORE_KEY")
+
     unexpected_fields = payload_fields - expected_fields
-    missing_fields = required_fields - payload_fields
+    missing_fields = effective_required_fields - payload_fields
     empty_required = {
         field
-        for field in required_fields
+        for field in effective_required_fields
         if payload.get(field) in (None, "")
     }
 
