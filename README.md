@@ -6,7 +6,7 @@ Shared Codex skills.
 
 ### Snowflake
 
-Read-only Snowflake querying, metadata exploration, table profiling, and validation using either programmatic access token (PAT) authentication (not secure only use for testing) or browser SSO.
+Snowflake querying, metadata exploration, table profiling, validation, and Snowflake Streamlit writeback app scaffolding using either programmatic access token (PAT) authentication (not secure only use for testing) or browser SSO. Direct helper scripts remain read-only.
 
 Install from GitHub:
 

@@ -1,8 +1,8 @@
 interface:
   display_name: "Snowflake"
-  short_description: "Query Snowflake safely with browser SSO"
+  short_description: "Query Snowflake and scaffold Streamlit apps"
   brand_color: "#29B5E8"
-  default_prompt: "Use $snowflake to inspect Snowflake schemas and run a safe read-only query."
+  default_prompt: "Use $snowflake to inspect Snowflake schemas or scaffold a Snowflake Streamlit writeback app."
 
 policy:
   allow_implicit_invocation: true
