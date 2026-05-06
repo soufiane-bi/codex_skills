@@ -1,7 +1,0 @@
-name: manual_data_ingest
-channels:
-  - snowflake
-dependencies:
-  - streamlit
-  - snowflake-snowpark-python
-  - pandas

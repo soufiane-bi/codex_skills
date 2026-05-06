@@ -24,7 +24,7 @@ from validators import ValidationError, validate_record
 
 CREATE_SCHEMA_SQL = f"""
 CREATE SCHEMA IF NOT EXISTS {APP_DATABASE}.{APP_SCHEMA}
-    COMMENT = 'Writable Streamlit app schema for retail planning writeback tables'
+    COMMENT = 'Writable Streamlit app schema for app-specific writeback tables'
 """
 
 COMMON_APPROVAL_COLUMNS = f"""
