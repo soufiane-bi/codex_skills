@@ -6,6 +6,7 @@ from snowflake.snowpark.context import get_active_session
 from config import (
     APP_NAME,
     APPROVED_STATUS,
+    CHANNEL_KEY_OPTIONS,
     FORECAST_KEY_COLUMN,
     PROMOTION_KEY_COLUMN,
     REJECTED_STATUS,
@@ -236,7 +237,7 @@ with forecast_tab:
 
         key_col1, key_col2, key_col3 = st.columns(3)
         store_key = key_col1.text_input("STORE_KEY", value="", key=f"store_key_{form_version}")
-        channel_key = key_col2.selectbox("CHANNEL_KEY", ["store", "online"], key=f"channel_key_{form_version}")
+        channel_key = key_col2.selectbox("CHANNEL_KEY", CHANNEL_KEY_OPTIONS, key=f"channel_key_{form_version}")
         sku = key_col3.text_input("SKU", value="", key=f"sku_{form_version}")
 
         country_code = st.text_input("COUNTRY_CODE", value="UK", key=f"country_code_{form_version}")
@@ -306,13 +307,14 @@ with promotion_tab:
 
         key_col1, key_col2, key_col3 = st.columns(3)
         store_key = key_col1.text_input("STORE_KEY", value="", key=f"promotion_store_key_{form_version}")
-        channel_key = key_col2.text_input("CHANNEL_KEY", value="", key=f"promotion_channel_key_{form_version}")
+        channel_key = key_col2.selectbox(
+            "CHANNEL_KEY",
+            CHANNEL_KEY_OPTIONS,
+            key=f"promotion_channel_key_{form_version}",
+        )
         sku = key_col3.text_input("SKU", value="", key=f"promotion_sku_{form_version}")
 
-        code_col1, code_col2, code_col3 = st.columns(3)
-        store_code = code_col1.text_input("STORE_CODE", value="", key=f"promotion_store_code_{form_version}")
-        channel_code = code_col2.text_input("CHANNEL_CODE", value="", key=f"promotion_channel_code_{form_version}")
-        country_code = code_col3.text_input("COUNTRY_CODE", value="UK", key=f"promotion_country_code_{form_version}")
+        country_code = st.text_input("COUNTRY_CODE", value="UK", key=f"promotion_country_code_{form_version}")
 
         comment = st.text_area("COMMENT", value="", key=f"promotion_comment_{form_version}")
         status = st.selectbox("STATUS", ["Valid", "Invalid"], index=0, key=f"promotion_status_{form_version}")
@@ -329,8 +331,6 @@ with promotion_tab:
                 "STORE_KEY": store_key,
                 "CHANNEL_KEY": channel_key,
                 "SKU": sku,
-                "STORE_CODE": store_code,
-                "CHANNEL_CODE": channel_code,
                 "COUNTRY_CODE": country_code,
                 "PROMOTION_PRICE": promotion_price,
                 "COMMENT": comment,
