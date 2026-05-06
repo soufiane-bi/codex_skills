@@ -120,36 +120,33 @@ GRANT SELECT ON FUTURE TABLES IN SCHEMA <APP_DATABASE>.<SOURCE_SCHEMA> TO ROLE <
 
 After storage objects exist, grant app users only the minimum table privileges they need, usually `SELECT, INSERT` on writeback tables and `SELECT` on dimension tables.
 
-## Retail Mart Key Alignment
+## Source Key Alignment
 
-Always inspect the target mart before finalizing the app. For the demo retail mart used in examples, align to these keys:
+Always inspect the target source schema before finalizing the app. Confirm which lookup tables and columns should drive selectors and foreign-key checks. A typical app might align fields like:
 
-- `DATE_KEY` from `RETAIL_MART.DIM_DATE`
-- `PRODUCT_KEY` from `RETAIL_MART.DIM_PRODUCT`
-- `STORE_KEY` from `RETAIL_MART.DIM_STORE`
-- `CHANNEL_KEY` from `RETAIL_MART.DIM_CHANNEL`
+- date fields from a date dimension
+- product or item fields from a product/item dimension
+- location fields from a store, site, or geography dimension
+- channel fields from a channel dimension
 
 Useful display columns:
 
-- Product: `SKU`, `PRODUCT_NAME`, `BRAND_NAME`, `CATEGORY_L1`, `CATEGORY_L2`
-- Store: `STORE_CODE`, `STORE_NAME`, `COUNTRY_CODE`, `REGION_NAME`
-- Channel: `CHANNEL_CODE`, `CHANNEL_NAME`
-- Date: `FULL_DATE`
+- business code or natural key
+- readable name or description
+- country, region, category, or other context columns that help users select the right record
 
 ## Optional Foreign Key Validation
 
 By default, rely on dropdown selectors loaded from dimension tables. This keeps app usage cheap and responsive. If the user explicitly wants stronger protection, enable a submit-time FK check for:
 
-- Date fields: `DATE_KEY`, `EFFECTIVE_FROM_DATE_KEY`, `EFFECTIVE_TO_DATE_KEY`, `PERIOD_START_DATE_KEY`, `PERIOD_END_DATE_KEY`, `START_DATE_KEY`, `END_DATE_KEY` in `DIM_DATE.DATE_KEY`.
-- `PRODUCT_KEY` in `DIM_PRODUCT.PRODUCT_KEY`.
-- `STORE_KEY` in `DIM_STORE.STORE_KEY`.
-- `CHANNEL_KEY` in `DIM_CHANNEL.CHANNEL_KEY`.
+- date fields against the chosen date lookup table
+- product, item, store, site, channel, or other lookup keys against their agreed source tables
 
-Show a specific error such as `Invalid foreign key selection: PRODUCT_KEY=12345 not found in DIM_PRODUCT.PRODUCT_KEY`.
+Show a specific error such as `Invalid foreign key selection: PRODUCT_KEY=12345 not found in YOUR_DIMENSION_TABLE.PRODUCT_KEY`.
 
 ## Approval Workflow
 
-Normal users should append records only as `PENDING_APPROVAL`. Admins should have a review tab that can approve or reject pending records and enter an approval or rejection comment. Use audit columns such as `SUBMITTED_AT`, `SUBMITTED_BY`, `APPROVED_AT`, `APPROVED_BY`, `APPROVAL_COMMENT`, `REJECTED_AT`, `REJECTED_BY`, and `REJECTION_REASON`. Downstream marts should usually consume only `STATUS = 'APPROVED'` records.
+Normal users should append records only as `PENDING_APPROVAL`. Admins should have a review tab that can approve or reject pending records and enter an approval or rejection comment. Use audit columns such as `APPROVAL_STATUS`, `SUBMITTED_AT`, `SUBMITTED_BY`, `APPROVED_AT`, `APPROVED_BY`, `APPROVAL_COMMENT`, `REJECTED_AT`, `REJECTED_BY`, and `REJECTION_REASON`. Downstream marts should usually consume only `APPROVAL_STATUS = 'APPROVED'` records.
 
 ## Recommended User Fields
 
@@ -208,7 +205,7 @@ A reusable starter template lives in `assets/streamlit-writeback-app/`:
 - `streamlit_app.py` - tabs, forms, admin first-run flow, record previews
 - `storage.py` - DDL, existence checks, dimension loads, safe mapped inserts
 - `validators.py` - record-type field validation and friendly errors
-- `config.py` - database/schema/table config and expected field mapping
+- `config.py` - app placeholders and one neutral sample record type; replace with the app's real tables, fields, widgets, required fields, and optional FK checks
 
 Concrete customer or account-specific apps should live outside the shared skill assets, for example in a private repo or an ignored local workspace such as `.local/streamlit-apps/<app-name>/`. Keep only reusable, sanitized templates in this skill.
 

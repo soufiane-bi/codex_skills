@@ -9,11 +9,12 @@ from config import (
     APP_DATABASE,
     APP_SCHEMA,
     APPROVED_STATUS,
-    DATE_KEY_FIELDS,
     ENABLE_FOREIGN_KEY_VALIDATION,
+    FOREIGN_KEY_CHECKS,
     KEY_COLUMNS,
     MART_SCHEMA,
     PENDING_STATUS,
+    RECORD_TYPES,
     REJECTED_STATUS,
     REQUIRED_TABLES,
     SOURCE_APP,
@@ -28,6 +29,7 @@ CREATE SCHEMA IF NOT EXISTS {APP_DATABASE}.{APP_SCHEMA}
 """
 
 COMMON_APPROVAL_COLUMNS = f"""
+        APPROVAL_STATUS VARCHAR(30) DEFAULT '{PENDING_STATUS}',
         SUBMITTED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
         SUBMITTED_BY VARCHAR(200) DEFAULT CURRENT_USER(),
         APPROVED_AT TIMESTAMP_NTZ,
@@ -43,91 +45,23 @@ COMMON_APPROVAL_COLUMNS = f"""
         SOURCE_APP VARCHAR(100) DEFAULT '{SOURCE_APP}'
 """
 
+
+def build_create_table_sql(record_type, record_config):
+    ddl_columns = ",\n        ".join(record_config["ddl_columns"])
+    table_name = record_config["table_name"]
+    key_column = record_config["key_column"]
+    return f"""
+    CREATE TABLE IF NOT EXISTS {table_name} (
+        {ddl_columns},
+{COMMON_APPROVAL_COLUMNS},
+        CONSTRAINT PK_{record_config["physical_table_name"]} PRIMARY KEY ({key_column})
+    )
+    """
+
+
 CREATE_TABLE_SQL = [
-    f"""
-    CREATE TABLE IF NOT EXISTS {APP_DATABASE}.{APP_SCHEMA}.ADJUSTMENTS (
-        ADJUSTMENT_KEY NUMBER(38, 0) AUTOINCREMENT START 1 INCREMENT 1,
-        ADJUSTMENT_CODE VARCHAR(100) NOT NULL,
-        ADJUSTMENT_TYPE VARCHAR(50) NOT NULL,
-        METRIC_NAME VARCHAR(100) NOT NULL,
-        ADJUSTMENT_METHOD VARCHAR(30) NOT NULL,
-        ADJUSTMENT_VALUE NUMBER(18, 4) NOT NULL,
-        DATE_KEY NUMBER(38, 0) NOT NULL,
-        EFFECTIVE_FROM_DATE_KEY NUMBER(38, 0),
-        EFFECTIVE_TO_DATE_KEY NUMBER(38, 0),
-        PRODUCT_KEY NUMBER(38, 0),
-        STORE_KEY NUMBER(38, 0),
-        CHANNEL_KEY NUMBER(38, 0),
-        SKU VARCHAR(100),
-        STORE_CODE VARCHAR(100),
-        CHANNEL_CODE VARCHAR(100),
-        COUNTRY_CODE VARCHAR(20),
-        REASON_CODE VARCHAR(100),
-        COMMENT VARCHAR(1000),
-        STATUS VARCHAR(30) DEFAULT '{PENDING_STATUS}',
-{COMMON_APPROVAL_COLUMNS},
-        CONSTRAINT PK_ADJUSTMENTS PRIMARY KEY (ADJUSTMENT_KEY)
-    )
-    """,
-    f"""
-    CREATE TABLE IF NOT EXISTS {APP_DATABASE}.{APP_SCHEMA}.FORECAST (
-        FORECAST_KEY NUMBER(38, 0) AUTOINCREMENT START 1 INCREMENT 1,
-        FORECAST_CODE VARCHAR(100) NOT NULL,
-        FORECAST_VERSION VARCHAR(100) NOT NULL,
-        SCENARIO_NAME VARCHAR(100) NOT NULL,
-        FORECAST_GRAIN VARCHAR(20) NOT NULL,
-        DATE_KEY NUMBER(38, 0) NOT NULL,
-        PERIOD_START_DATE_KEY NUMBER(38, 0),
-        PERIOD_END_DATE_KEY NUMBER(38, 0),
-        PRODUCT_KEY NUMBER(38, 0),
-        STORE_KEY NUMBER(38, 0),
-        CHANNEL_KEY NUMBER(38, 0),
-        SKU VARCHAR(100),
-        STORE_CODE VARCHAR(100),
-        CHANNEL_CODE VARCHAR(100),
-        COUNTRY_CODE VARCHAR(20),
-        FORECAST_QUANTITY NUMBER(18, 4),
-        FORECAST_GROSS_SALES_AMOUNT NUMBER(18, 4),
-        FORECAST_DISCOUNT_AMOUNT NUMBER(18, 4),
-        FORECAST_NET_SALES_AMOUNT NUMBER(18, 4),
-        FORECAST_TOTAL_COST_AMOUNT NUMBER(18, 4),
-        FORECAST_GROSS_MARGIN_AMOUNT NUMBER(18, 4),
-        MODEL_NAME VARCHAR(200),
-        CONFIDENCE_SCORE NUMBER(8, 4),
-        COMMENT VARCHAR(1000),
-        STATUS VARCHAR(30) DEFAULT '{PENDING_STATUS}',
-{COMMON_APPROVAL_COLUMNS},
-        CONSTRAINT PK_FORECAST PRIMARY KEY (FORECAST_KEY)
-    )
-    """,
-    f"""
-    CREATE TABLE IF NOT EXISTS {APP_DATABASE}.{APP_SCHEMA}.PROMOTIONS (
-        PROMOTION_KEY NUMBER(38, 0) AUTOINCREMENT START 1 INCREMENT 1,
-        PROMOTION_CODE VARCHAR(100) NOT NULL,
-        PROMOTION_NAME VARCHAR(300) NOT NULL,
-        PROMOTION_TYPE VARCHAR(100),
-        PROMOTION_MECHANIC VARCHAR(100),
-        START_DATE_KEY NUMBER(38, 0) NOT NULL,
-        END_DATE_KEY NUMBER(38, 0) NOT NULL,
-        PRODUCT_KEY NUMBER(38, 0),
-        STORE_KEY NUMBER(38, 0),
-        CHANNEL_KEY NUMBER(38, 0),
-        SKU VARCHAR(100),
-        STORE_CODE VARCHAR(100),
-        CHANNEL_CODE VARCHAR(100),
-        COUNTRY_CODE VARCHAR(20),
-        REGULAR_PRICE NUMBER(18, 4),
-        PROMO_PRICE NUMBER(18, 4),
-        DISCOUNT_AMOUNT NUMBER(18, 4),
-        DISCOUNT_PCT NUMBER(8, 4),
-        EXPECTED_UPLIFT_PCT NUMBER(8, 4),
-        SUPPLIER_FUNDING_AMOUNT NUMBER(18, 4),
-        COMMENT VARCHAR(1000),
-        STATUS VARCHAR(30) DEFAULT '{PENDING_STATUS}',
-{COMMON_APPROVAL_COLUMNS},
-        CONSTRAINT PK_PROMOTIONS PRIMARY KEY (PROMOTION_KEY)
-    )
-    """,
+    build_create_table_sql(record_type, record_config)
+    for record_type, record_config in RECORD_TYPES.items()
 ]
 
 
@@ -147,12 +81,13 @@ def require_admin(session):
 
 
 def get_missing_tables(session):
+    quoted_tables = ", ".join(f"'{table_name}'" for table_name in sorted(REQUIRED_TABLES))
     rows = session.sql(
         f"""
         SELECT TABLE_NAME
         FROM {APP_DATABASE}.INFORMATION_SCHEMA.TABLES
         WHERE TABLE_SCHEMA = '{APP_SCHEMA}'
-          AND TABLE_NAME IN ('ADJUSTMENTS', 'FORECAST', 'PROMOTIONS')
+          AND TABLE_NAME IN ({quoted_tables})
         """
     ).collect()
     existing = {row["TABLE_NAME"] for row in rows}
@@ -164,62 +99,6 @@ def create_storage_objects(session):
     session.sql(CREATE_SCHEMA_SQL).collect()
     for statement in CREATE_TABLE_SQL:
         session.sql(statement).collect()
-
-
-def load_products(session):
-    return session.sql(
-        f"""
-        SELECT
-            PRODUCT_KEY,
-            SKU,
-            PRODUCT_NAME,
-            BRAND_NAME,
-            CATEGORY_L1,
-            CATEGORY_L2
-        FROM {APP_DATABASE}.{MART_SCHEMA}.DIM_PRODUCT
-        ORDER BY SKU
-        """
-    ).to_pandas()
-
-
-def load_stores(session):
-    return session.sql(
-        f"""
-        SELECT
-            STORE_KEY,
-            STORE_CODE,
-            STORE_NAME,
-            COUNTRY_CODE,
-            REGION_NAME
-        FROM {APP_DATABASE}.{MART_SCHEMA}.DIM_STORE
-        ORDER BY STORE_CODE
-        """
-    ).to_pandas()
-
-
-def load_channels(session):
-    return session.sql(
-        f"""
-        SELECT
-            CHANNEL_KEY,
-            CHANNEL_CODE,
-            CHANNEL_NAME
-        FROM {APP_DATABASE}.{MART_SCHEMA}.DIM_CHANNEL
-        ORDER BY CHANNEL_KEY
-        """
-    ).to_pandas()
-
-
-def load_dates(session):
-    return session.sql(
-        f"""
-        SELECT
-            DATE_KEY,
-            FULL_DATE
-        FROM {APP_DATABASE}.{MART_SCHEMA}.DIM_DATE
-        ORDER BY FULL_DATE DESC
-        """
-    ).to_pandas()
 
 
 def load_recent_records(session, record_type, limit=50):
@@ -242,7 +121,7 @@ def load_pending_records(session, record_type):
         f"""
         SELECT *
         FROM {table_name}
-        WHERE STATUS = '{PENDING_STATUS}'
+        WHERE APPROVAL_STATUS = '{PENDING_STATUS}'
         ORDER BY {key_column} ASC
         """
     ).to_pandas()
@@ -276,22 +155,13 @@ def key_exists(session, table_name, column_name, value):
 
 
 def validate_foreign_keys(session, payload):
-    checks = []
-    for field in DATE_KEY_FIELDS:
-        if field in payload:
-            checks.append((field, "DIM_DATE", "DATE_KEY", payload.get(field)))
-    for field, table_name, column_name in [
-        ("PRODUCT_KEY", "DIM_PRODUCT", "PRODUCT_KEY"),
-        ("STORE_KEY", "DIM_STORE", "STORE_KEY"),
-        ("CHANNEL_KEY", "DIM_CHANNEL", "CHANNEL_KEY"),
-    ]:
-        if field in payload:
-            checks.append((field, table_name, column_name, payload.get(field)))
-
     missing = []
-    for field, table_name, column_name, value in checks:
-        if value is not None and not key_exists(session, table_name, column_name, value):
-            missing.append(f"{field}={value} not found in {table_name}.{column_name}")
+    for field_name, check in FOREIGN_KEY_CHECKS.items():
+        if field_name not in payload:
+            continue
+        value = payload.get(field_name)
+        if value is not None and not key_exists(session, check["table"], check["column"], value):
+            missing.append(f"{field_name}={value} not found in {check['table']}.{check['column']}")
 
     if missing:
         raise ValidationError("Invalid foreign key selection: " + "; ".join(missing))
@@ -302,12 +172,9 @@ def insert_record(session, record_type, payload):
     if ENABLE_FOREIGN_KEY_VALIDATION:
         validate_foreign_keys(session, payload)
 
-    payload = dict(payload)
-    payload["STATUS"] = PENDING_STATUS
-
-    table_name = WRITEBACK_TABLES[record_type]
     columns = list(payload.keys())
     values = [sql_literal(payload[column]) for column in columns]
+    table_name = WRITEBACK_TABLES[record_type]
 
     sql = f"""
         INSERT INTO {table_name} ({", ".join(columns)})
@@ -316,20 +183,25 @@ def insert_record(session, record_type, payload):
     session.sql(sql).collect()
 
 
-def set_record_status(session, record_type, record_key, status, review_comment=None):
+def set_record_statuses(session, record_type, record_keys, status, review_comment=None):
     require_admin(session)
     if status not in {APPROVED_STATUS, REJECTED_STATUS}:
         raise ValidationError("Admin action must approve or reject the submitted record.")
+
+    record_keys = [record_key for record_key in record_keys if record_key is not None]
+    if not record_keys:
+        raise ValidationError("Select at least one pending record to review.")
 
     table_name = WRITEBACK_TABLES[record_type]
     key_column = KEY_COLUMNS[record_type]
     status_sql = sql_literal(status)
     comment_sql = sql_literal(review_comment)
+    record_keys_sql = ", ".join(sql_literal(record_key) for record_key in record_keys)
 
     if status == APPROVED_STATUS:
         sql = f"""
             UPDATE {table_name}
-            SET STATUS = {status_sql},
+            SET APPROVAL_STATUS = {status_sql},
                 APPROVED_AT = CURRENT_TIMESTAMP(),
                 APPROVED_BY = CURRENT_USER(),
                 APPROVAL_COMMENT = {comment_sql},
@@ -338,21 +210,25 @@ def set_record_status(session, record_type, record_key, status, review_comment=N
                 REJECTION_REASON = NULL,
                 UPDATED_AT = CURRENT_TIMESTAMP(),
                 UPDATED_BY = CURRENT_USER()
-            WHERE {key_column} = {sql_literal(record_key)}
-              AND STATUS = '{PENDING_STATUS}'
+            WHERE {key_column} IN ({record_keys_sql})
+              AND APPROVAL_STATUS = '{PENDING_STATUS}'
         """
     else:
         sql = f"""
             UPDATE {table_name}
-            SET STATUS = {status_sql},
+            SET APPROVAL_STATUS = {status_sql},
                 REJECTED_AT = CURRENT_TIMESTAMP(),
                 REJECTED_BY = CURRENT_USER(),
                 APPROVAL_COMMENT = NULL,
                 REJECTION_REASON = {comment_sql},
                 UPDATED_AT = CURRENT_TIMESTAMP(),
                 UPDATED_BY = CURRENT_USER()
-            WHERE {key_column} = {sql_literal(record_key)}
-              AND STATUS = '{PENDING_STATUS}'
+            WHERE {key_column} IN ({record_keys_sql})
+              AND APPROVAL_STATUS = '{PENDING_STATUS}'
         """
 
     session.sql(sql).collect()
+
+
+def set_record_status(session, record_type, record_key, status, review_comment=None):
+    set_record_statuses(session, record_type, [record_key], status, review_comment)
