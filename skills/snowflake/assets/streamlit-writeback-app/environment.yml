@@ -1,0 +1,8 @@
+name: stock_adjustment_ingest
+channels:
+  - snowflake
+dependencies:
+  - streamlit
+  - snowflake-snowpark-python
+  - pandas
+  - openpyxl

@@ -183,6 +183,25 @@ def insert_record(session, record_type, payload):
     session.sql(sql).collect()
 
 
+def insert_records(session, record_type, payloads):
+    if not payloads:
+        raise ValidationError("No records were supplied for upload.")
+
+    for payload in payloads:
+        validate_record(record_type, payload)
+        if ENABLE_FOREIGN_KEY_VALIDATION:
+            validate_foreign_keys(session, payload)
+
+    try:
+        session.sql("BEGIN").collect()
+        for payload in payloads:
+            insert_record(session, record_type, payload)
+        session.sql("COMMIT").collect()
+    except Exception:
+        session.sql("ROLLBACK").collect()
+        raise
+
+
 def set_record_statuses(session, record_type, record_keys, status, review_comment=None):
     require_admin(session)
     if status not in {APPROVED_STATUS, REJECTED_STATUS}:
